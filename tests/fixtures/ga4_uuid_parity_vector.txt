@@ -1,0 +1,5 @@
+["pk_live_6a1b2c3d4e5f","1041","2430b75b-79f6-5b8a-b1c4-5057ff678cac"]
+["pk_test_1234","ORD-2026/11/02-77","7ad03f69-e45b-56e9-a715-156b639469ef"]
+["pk_live_idosell_shop","Zamówienie-łódź-źdźbło","b0759940-b46d-5c13-9ce3-d91bd145f558"]
+["pk_live_6a1b2c3d4e5f","000123","0ab5793f-a7d4-5dd9-bad9-214b710f8857"]
+["pk_live_emoji","order-🛒-42","c3a7fea8-92f5-59f1-a6a5-cb9b8551678a"]

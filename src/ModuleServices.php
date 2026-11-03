@@ -15,6 +15,7 @@ use Axitrace\PrestaShop\Adapter\PhpEncryptionCipher;
 use Axitrace\PrestaShop\Adapter\PrestaShopConfigurationStore;
 use Axitrace\PrestaShop\Adapter\PrestaShopDbGateway;
 use Axitrace\PrestaShop\Adapter\PrestaShopLoggerAdapter;
+use Axitrace\PrestaShop\Adapter\PrestaShopRequestContext;
 use Axitrace\PrestaShop\Adapter\PrestaShopStorefrontReader;
 use Axitrace\PrestaShop\Adapter\ProcessEnvironment;
 use Axitrace\PrestaShop\Adapter\SystemClock;
@@ -24,13 +25,20 @@ use Axitrace\PrestaShop\Config\EndpointResolver;
 use Axitrace\PrestaShop\Config\FailureRecorder;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\SecretKeyVault;
+use Axitrace\PrestaShop\Consent\ConsentGate;
 use Axitrace\PrestaShop\Exclusion\CustomerGroupExclusion;
+use Axitrace\PrestaShop\Hook\Front\CartSnapshotWriter;
 use Axitrace\PrestaShop\Hook\Front\HeaderRenderer;
 use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
 use Axitrace\PrestaShop\Hook\Front\StatusResponder;
+use Axitrace\PrestaShop\Hook\Order\OrderPlacedHook;
 use Axitrace\PrestaShop\Install\ConfigInstaller;
 use Axitrace\PrestaShop\Install\HookRegistrar;
 use Axitrace\PrestaShop\Install\SchemaInstaller;
+use Axitrace\PrestaShop\Normalizer\ClickIdReader;
+use Axitrace\PrestaShop\Purchase\OrderRowRepository;
+use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
+use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
 
 /**
  * Composition root: the one place that wires the PrestaShop adapters into the module services.
@@ -114,6 +122,35 @@ final class ModuleServices
     public function failureRecorder(): FailureRecorder
     {
         return new FailureRecorder($this->store(), new PrestaShopLoggerAdapter(), new SystemClock());
+    }
+
+    public function cartSnapshotWriter(): CartSnapshotWriter
+    {
+        return new CartSnapshotWriter($this->config(), $this->snapshotBuilder(), $this->cartSnapshots(), new PrestaShopRequestContext(), new SystemClock());
+    }
+
+    public function orderPlacedHook(): OrderPlacedHook
+    {
+        return new OrderPlacedHook(
+            $this->config(),
+            $this->cartSnapshots(),
+            new OrderRowRepository($this->db()),
+            $this->snapshotBuilder(),
+            new PrestaShopRequestContext(),
+            $this->failureRecorder(),
+            new PrestaShopLoggerAdapter(),
+            new SystemClock(),
+        );
+    }
+
+    public function cartSnapshots(): CartSnapshotRepository
+    {
+        return new CartSnapshotRepository($this->db());
+    }
+
+    private function snapshotBuilder(): SnapshotBuilder
+    {
+        return new SnapshotBuilder(new ClickIdReader(), new ConsentGate());
     }
 
     private function exclusion(): CustomerGroupExclusion

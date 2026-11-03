@@ -19,6 +19,7 @@ use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
+use Axitrace\PrestaShop\Hook\Order\PlacedOrder;
 use Axitrace\PrestaShop\Install\VersionGuard;
 use Axitrace\PrestaShop\ModuleServices;
 
@@ -257,6 +258,15 @@ class Axitrace extends Module
                     'modules/' . $this->name . '/views/js/axitrace-storefront.js',
                     ['position' => 'bottom', 'priority' => 200, 'version' => (string) $this->version],
                 );
+
+                // After the script registration: a snapshot failure must not cost the page its events.
+                $cart = $this->context->cart;
+                $this->services()->cartSnapshotWriter()->write(
+                    (string) $controller->php_self,
+                    $cart instanceof Cart ? (int) $cart->id : 0,
+                    (int) ($this->context->shop->id ?? 0),
+                    ShopScope::context(),
+                );
             }
         } catch (\Throwable $e) {
             $this->storefrontFailure('actionFrontControllerSetMedia', $e);
@@ -275,6 +285,20 @@ class Axitrace extends Module
      */
     public function hookActionValidateOrder(array $params): void
     {
+        $order = $params['order'] ?? null;
+        if (!$order instanceof Order || (int) $order->id <= 0) {
+            PrestaShopLogger::addLog('AxiTrace: actionValidateOrder without an order object; the order was not recorded.', 3, null, 'Axitrace', null, true);
+
+            return;
+        }
+
+        try {
+            $placed = new PlacedOrder((int) $order->id, (int) $order->id_shop, (int) $order->id_shop_group, (int) $order->id_cart, (string) $order->reference);
+            $this->services()->orderPlacedHook()->handle($placed, $this->isBuyerRequestFor((int) $order->id_cart));
+        } catch (\Throwable $e) {
+            // OrderPlacedHook never throws; this guards the wiring (service construction) itself.
+            PrestaShopLogger::addLog(sprintf('AxiTrace: actionValidateOrder failed for order %d (%s: %s)', (int) $order->id, $e::class, $e->getMessage()), 3, null, 'Axitrace', (int) $order->id, true);
+        }
     }
 
     /**
@@ -326,6 +350,21 @@ class Axitrace extends Module
     private function services(): ModuleServices
     {
         return $this->services ??= new ModuleServices($this);
+    }
+
+    /**
+     * True when the current request is the buyer's own storefront request for this cart (for
+     * example a payment module's validation controller), so its cookies and IP are the buyer's.
+     * An IPN call, a cron or a back-office order is not.
+     */
+    private function isBuyerRequestFor(int $idCart): bool
+    {
+        $cart = $this->context->cart;
+
+        return $this->context->controller instanceof FrontController
+            && $cart instanceof Cart
+            && $idCart > 0
+            && (int) $cart->id === $idCart;
     }
 
     private function phpSelf(): string

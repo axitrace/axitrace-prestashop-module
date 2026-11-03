@@ -26,6 +26,7 @@ use Axitrace\PrestaShop\Purchase\PurchaseEligibility;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
+use Axitrace\PrestaShop\Refund\SentPurchase;
 use Axitrace\PrestaShop\Retry\FailedEventQueue;
 use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
 use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
@@ -41,6 +42,8 @@ use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
  * normalize -> send synchronously (A21, 1 s / 2 s timeouts) -> SENT on 2xx. An undelivered
  * purchase keeps its claim and goes to the retry queue with the same event id (a refused one is
  * recorded there as dead, for the delivery log).
+ *
+ * Once the order is claimed, a Refunded or Canceled status goes to {@see RefundHook::onStateChange()}.
  *
  * Never throws: PrestaShop changes order states without a transaction. Every failure is logged
  * with class and message and recorded as the module's last failure.
@@ -58,6 +61,7 @@ final class OrderStatusHook
         private readonly ConsentGate $consentGate,
         private readonly OrderEventNormalizer $normalizer,
         private readonly PurchaseSender $sender,
+        private readonly RefundHook $refunds,
         private readonly FailedEventQueue $queue,
         private readonly FailureRecorder $failures,
         private readonly LoggerInterface $logger,
@@ -89,6 +93,9 @@ final class OrderStatusHook
 
         $row = $this->rows->find($change->idOrder);
         if ($row !== null && PurchaseLedger::isClaimed($row)) {
+            // Sent (or queued) already: a Refunded or Canceled status may be a refund (T10).
+            $this->refunds->onStateChange($row, $change->newStateId);
+
             return;
         }
 
@@ -153,6 +160,8 @@ final class OrderStatusHook
                 $decision->value,
                 $change->newStateId,
             );
+            // What the purchase carries, for refunds computed after PrestaShop changed the order.
+            $this->rows->recordSentPurchase($order->idOrder, SentPurchase::fromOrder($order));
         } catch (\Throwable $e) {
             // Nothing left the shop: give the claim back so the next status change tries again.
             $this->ledger->releaseClaim($order->idOrder);

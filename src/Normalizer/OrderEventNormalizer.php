@@ -26,6 +26,8 @@ use Axitrace\PrestaShop\Purchase\PurchaseOrder;
  *             orderNumber, tax, shipping, valueBasis, paymentInfo: {method},
  *             fbp?, fbc?, ttp?, rdt_uuid?, obref?, <click ids>?, _ga?, ga_session_id?, consent?, url?,
  *             orderReference, cartId, psVersion, phpVersion, trigger, orderStateId } }
+ *   products[]: { productId, externalId, variantId, sku, name, quantity, price, currency, brand?,
+ *                 category?, unitCost?: { amount, currency } }
  *
  * The PrestaShop-only keys travel inside `data`: the ingestion API keeps `data` as it is and reads
  * only the known top-level keys.
@@ -38,6 +40,11 @@ use Axitrace\PrestaShop\Purchase\PurchaseOrder;
  * - `revenue`/`value` follow the configured value basis; `tax` and `shipping` are always gross.
  * - Browser ids, click ids, consent, IP and user agent come from the attribution snapshot captured
  *   in the buyer's own request (A24); absent keys are omitted, never guessed.
+ * - `unitCost` (server purchase only): the NET cost per unit in the order currency
+ *   ({@see PurchaseCostResolver}); a line without a cost has no key. Costs are always put on the
+ *   server payload; {@see \Axitrace\PrestaShop\Purchase\PurchaseSender} strips them whenever the
+ *   shop has no usable secret key at the moment of sending (also for a retry), because AxiTrace
+ *   only keeps costs from an authenticated request.
  */
 final class OrderEventNormalizer
 {
@@ -61,6 +68,7 @@ final class OrderEventNormalizer
     public function __construct(
         private readonly PlatformInfo $platform,
         private readonly ClockInterface $clock,
+        private readonly PurchaseCostResolver $costs,
     ) {
     }
 
@@ -88,7 +96,7 @@ final class OrderEventNormalizer
         $snapshot ??= [];
         $orderId = (string) $order->idOrder;
 
-        $data = $this->orderData($order, $basis, $snapshot);
+        $data = $this->orderData($order, $basis, $snapshot, true);
         $data['trigger'] = $trigger;
         $data['orderStateId'] = $orderStateId;
 
@@ -126,7 +134,7 @@ final class OrderEventNormalizer
      */
     public function browserPurchase(PurchaseOrder $order, string $eventId, ConversionValueBasis $basis, ?array $snapshot): array
     {
-        $params = $this->orderData($order, $basis, $snapshot ?? []);
+        $params = $this->orderData($order, $basis, $snapshot ?? [], false);
         $params['eventSalt'] = $eventId;
         $params['transactionId'] = (string) $order->idOrder;
         $params['orderId'] = (string) $order->idOrder;
@@ -164,13 +172,18 @@ final class OrderEventNormalizer
      *
      * @return array<string, mixed>
      */
-    private function orderData(PurchaseOrder $order, ConversionValueBasis $basis, array $snapshot): array
+    private function orderData(PurchaseOrder $order, ConversionValueBasis $basis, array $snapshot, bool $withCosts): array
     {
         $money = ['amount' => self::conversionValue($order, $basis), 'currency' => $order->currency];
 
         $products = [];
         foreach ($order->lines as $line) {
-            $products[] = $this->product($line, $order->currency, $basis);
+            $product = $this->product($line, $order->currency, $basis);
+            $unitCost = $withCosts ? $this->costs->unitCost($line, $order->conversionRate) : null;
+            if ($unitCost !== null) {
+                $product['unitCost'] = ['amount' => $unitCost, 'currency' => $order->currency];
+            }
+            $products[] = $product;
         }
 
         $data = [

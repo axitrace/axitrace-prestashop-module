@@ -182,11 +182,9 @@ final class RetryRunnerTest extends TestCase
         $runner = new RetryRunner(
             $pipeline->queue(),
             $pipeline->sender(),
-            new IngestionClient($pipeline->transport),
-            $pipeline->config(),
-            $pipeline->vault(),
-            new EndpointResolver(new FakeEnvironment(true, [EndpointResolver::ENV_API_OVERRIDE => PurchasePipeline::SINK]), new FakeHostResolver()),
+            $pipeline->refundSender(),
             new PurchaseLedger($pipeline->db),
+            $pipeline->refundLedger(),
             new CartSnapshotRepository($pipeline->db),
             new FakeShopGroupResolver(),
             $pipeline->logger,

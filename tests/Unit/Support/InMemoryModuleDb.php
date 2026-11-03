@@ -22,6 +22,9 @@ final class InMemoryModuleDb implements DbGatewayInterface
     /** @var array<int, array<string, mixed>> keyed by id */
     public array $failedEvents = [];
 
+    /** @var array<int, array<string, mixed>> keyed by id */
+    public array $refunds = [];
+
     /** @var list<string> */
     public array $executed = [];
 
@@ -29,6 +32,8 @@ final class InMemoryModuleDb implements DbGatewayInterface
     public ?InMemoryConfigurationStore $configuration = null;
 
     private int $nextFailedEventId = 1;
+
+    private int $nextRefundId = 1;
 
     public function prefix(): string
     {
@@ -84,6 +89,9 @@ final class InMemoryModuleDb implements DbGatewayInterface
         if (str_contains($sql, '`ps_axitrace_failed_event`')) {
             return $this->updateFailedEvents($sql);
         }
+        if (str_contains($sql, '`ps_axitrace_refund`')) {
+            return $this->updateRefunds($sql);
+        }
         if (str_starts_with($sql, 'UPDATE `ps_configuration`')) {
             return $this->updateConfiguration($sql);
         }
@@ -115,6 +123,10 @@ final class InMemoryModuleDb implements DbGatewayInterface
         }
         if (preg_match('/FROM `ps_axitrace_order` WHERE `id_order` = (\d+)/', $sql, $m) === 1) {
             return isset($this->orders[(int) $m[1]]) ? [$this->orders[(int) $m[1]]] : [];
+        }
+
+        if (preg_match('/^SELECT \\* FROM `ps_axitrace_refund` WHERE `id_order` = (\\d+) ORDER BY `id`$/', $sql, $m) === 1) {
+            return array_values(array_filter($this->refunds, static fn (array $r): bool => (int) $r['id_order'] === (int) $m[1]));
         }
 
         if (preg_match("/^SELECT \\* FROM `ps_axitrace_failed_event` WHERE `status` = '(\\w+)' AND `next_attempt_at` <= '([^']+)' ORDER BY `next_attempt_at`, `id` LIMIT (\\d+)$/", $sql, $m) === 1) {
@@ -165,6 +177,41 @@ final class InMemoryModuleDb implements DbGatewayInterface
             }
 
             return 1;
+        }
+
+        throw new \LogicException('Statement not supported by the fake: ' . $sql);
+    }
+
+    private function updateRefunds(string $sql): int
+    {
+        if (preg_match('/^INSERT IGNORE INTO `ps_axitrace_refund` \(([^)]*)\) VALUES \((.*)\)$/s', $sql, $m) === 1) {
+            $row = $this->row($m[1], $m[2]);
+            foreach ($this->refunds as $existing) {
+                if ($existing['refund_id'] === $row['refund_id']) {
+                    return 0;
+                }
+            }
+            $this->refunds[$this->nextRefundId] = ['id' => (string) $this->nextRefundId] + $row + ['sent_at' => null];
+            ++$this->nextRefundId;
+
+            return 1;
+        }
+        if (preg_match("/^UPDATE `ps_axitrace_refund` SET `sent_at` = '([^']+)' WHERE `refund_id` = '((?:[^'\\\\]|\\\\.)*)'$/", $sql, $m) === 1) {
+            $changed = 0;
+            foreach ($this->refunds as $id => $row) {
+                if ($row['refund_id'] === stripslashes($m[2])) {
+                    $this->refunds[$id]['sent_at'] = $m[1];
+                    ++$changed;
+                }
+            }
+
+            return $changed;
+        }
+        if (preg_match("/^DELETE FROM `ps_axitrace_refund` WHERE `refund_id` = '((?:[^'\\\\]|\\\\.)*)'$/", $sql, $m) === 1) {
+            $before = count($this->refunds);
+            $this->refunds = array_filter($this->refunds, static fn (array $r): bool => $r['refund_id'] !== stripslashes($m[1]));
+
+            return $before - count($this->refunds);
         }
 
         throw new \LogicException('Statement not supported by the fake: ' . $sql);

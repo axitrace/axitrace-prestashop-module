@@ -35,7 +35,11 @@
                 "price": 19.12,
                 "currency": "EUR",
                 "brand": "Studio Design",
-                "category": "Men"
+                "category": "Men",
+                "unitCost": {
+                    "amount": 5.49,
+                    "currency": "EUR"
+                }
             }
         ],
         "revenue": {

@@ -9,6 +9,7 @@ if (!defined('_PS_VERSION_')) {
 }
 
 use Axitrace\PrestaShop\Adapter\DbGatewayInterface;
+use Axitrace\PrestaShop\Refund\SentPurchase;
 use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
 
 /**
@@ -62,5 +63,27 @@ final class OrderRowRepository
         ));
 
         return $rows[0] ?? null;
+    }
+
+    /** Keeps what the purchase carried, for the refunds computed later ({@see SentPurchase}). */
+    public function recordSentPurchase(int $idOrder, SentPurchase $purchase): void
+    {
+        $this->db->update(sprintf(
+            "UPDATE `%saxitrace_order` SET `purchase_snapshot` = '%s' WHERE `id_order` = %d",
+            $this->db->prefix(),
+            $this->db->escape($purchase->encode()),
+            $idOrder,
+        ));
+    }
+
+    /** `partially_refunded`, `refunded` or `cancelled`: what the reported refunds amount to. */
+    public function setRefundState(int $idOrder, string $state): void
+    {
+        $this->db->update(sprintf(
+            "UPDATE `%saxitrace_order` SET `refund_state` = '%s' WHERE `id_order` = %d",
+            $this->db->prefix(),
+            $this->db->escape($state),
+            $idOrder,
+        ));
     }
 }

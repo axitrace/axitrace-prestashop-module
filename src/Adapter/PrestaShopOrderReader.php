@@ -56,10 +56,11 @@ final class PrestaShopOrderReader implements OrderReaderInterface
         $lines = [];
         foreach ($order->getOrderDetailList() as $row) {
             $productId = (int) ($row['product_id'] ?? 0);
-            [$category, $brand] = $this->categoryAndBrand($productId, $idLang, $idShop);
+            $variantId = (int) ($row['product_attribute_id'] ?? 0);
+            [$category, $brand, $wholesale] = $this->productFacts($productId, $variantId, $idLang, $idShop);
             $lines[] = new PurchaseLine(
                 $productId,
-                (int) ($row['product_attribute_id'] ?? 0),
+                $variantId,
                 (string) ($row['product_reference'] ?? ''),
                 (string) ($row['product_name'] ?? ''),
                 (int) ($row['product_quantity'] ?? 0),
@@ -67,6 +68,10 @@ final class PrestaShopOrderReader implements OrderReaderInterface
                 (float) ($row['unit_price_tax_excl'] ?? 0),
                 $category,
                 $brand,
+                (int) ($row['id_order_detail'] ?? 0),
+                (float) ($row['purchase_supplier_price'] ?? 0),
+                (float) ($row['original_wholesale_price'] ?? 0),
+                $wholesale,
             );
         }
 
@@ -98,6 +103,7 @@ final class PrestaShopOrderReader implements OrderReaderInterface
                 $stateIso,
             ),
             $lines,
+            (float) $order->conversion_rate,
         );
     }
 
@@ -111,25 +117,37 @@ final class PrestaShopOrderReader implements OrderReaderInterface
     }
 
     /**
-     * Default category name and manufacturer name of the product, '' when unknown.
+     * Default category name, manufacturer name and current cost price (`wholesale_price` of the
+     * combination when it has one, else of the product); '' / 0.0 when unknown.
      *
-     * @return array{0: string, 1: string}
+     * @return array{0: string, 1: string, 2: float}
      */
-    private function categoryAndBrand(int $productId, int $idLang, int $idShop): array
+    private function productFacts(int $productId, int $variantId, int $idLang, int $idShop): array
     {
         if ($productId <= 0) {
-            return ['', ''];
+            return ['', '', 0.0];
         }
 
         $product = new \Product($productId, false, $idLang, $idShop);
         if (!\Validate::isLoadedObject($product)) {
-            return ['', ''];
+            return ['', '', 0.0];
         }
 
         $category = new \Category((int) $product->id_category_default, $idLang);
         $categoryName = \Validate::isLoadedObject($category) && is_string($category->name) ? $category->name : '';
         $brand = (int) $product->id_manufacturer > 0 ? (string) \Manufacturer::getNameById((int) $product->id_manufacturer) : '';
 
-        return [$categoryName, $brand];
+        $wholesale = 0.0;
+        if ($variantId > 0) {
+            $combination = new \Combination($variantId, null, $idShop);
+            if (\Validate::isLoadedObject($combination)) {
+                $wholesale = (float) $combination->wholesale_price;
+            }
+        }
+        if ($wholesale <= 0.0) {
+            $wholesale = (float) $product->wholesale_price;
+        }
+
+        return [$categoryName, $brand, $wholesale];
     }
 }

@@ -17,6 +17,7 @@ use Axitrace\PrestaShop\Adapter\PrestaShopConfigurationStore;
 use Axitrace\PrestaShop\Adapter\PrestaShopDbGateway;
 use Axitrace\PrestaShop\Adapter\PrestaShopLoggerAdapter;
 use Axitrace\PrestaShop\Adapter\PrestaShopOrderReader;
+use Axitrace\PrestaShop\Adapter\PrestaShopRefundReader;
 use Axitrace\PrestaShop\Adapter\PrestaShopRequestContext;
 use Axitrace\PrestaShop\Adapter\PrestaShopShopGroupResolver;
 use Axitrace\PrestaShop\Adapter\PrestaShopStorefrontReader;
@@ -38,6 +39,7 @@ use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
 use Axitrace\PrestaShop\Hook\Front\StatusResponder;
 use Axitrace\PrestaShop\Hook\Order\OrderPlacedHook;
 use Axitrace\PrestaShop\Hook\Order\OrderStatusHook;
+use Axitrace\PrestaShop\Hook\Order\RefundHook;
 use Axitrace\PrestaShop\Http\IngestionClient;
 use Axitrace\PrestaShop\Install\ConfigInstaller;
 use Axitrace\PrestaShop\Install\HookRegistrar;
@@ -45,11 +47,15 @@ use Axitrace\PrestaShop\Install\SchemaInstaller;
 use Axitrace\PrestaShop\Normalizer\ClickIdReader;
 use Axitrace\PrestaShop\Normalizer\OrderEventNormalizer;
 use Axitrace\PrestaShop\Normalizer\PlatformInfo;
+use Axitrace\PrestaShop\Normalizer\PurchaseCostResolver;
+use Axitrace\PrestaShop\Normalizer\RefundEventNormalizer;
 use Axitrace\PrestaShop\Purchase\BrowserPurchase;
 use Axitrace\PrestaShop\Purchase\OrderRowRepository;
 use Axitrace\PrestaShop\Purchase\PurchaseEligibility;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
+use Axitrace\PrestaShop\Refund\RefundLedger;
+use Axitrace\PrestaShop\Refund\RefundSender;
 use Axitrace\PrestaShop\Retry\CronResponder;
 use Axitrace\PrestaShop\Retry\FailedEventQueue;
 use Axitrace\PrestaShop\Retry\LazyTrigger;
@@ -177,6 +183,25 @@ final class ModuleServices
             new ConsentGate(),
             $this->orderEventNormalizer(),
             $this->purchaseSender(),
+            $this->refundHook(),
+            $this->failedEventQueue(),
+            $this->failureRecorder(),
+            new PrestaShopLoggerAdapter(),
+            new SystemClock(),
+        );
+    }
+
+    public function refundHook(): RefundHook
+    {
+        return new RefundHook(
+            $this->config(),
+            $this->secretKeyVault(),
+            new OrderRowRepository($this->db()),
+            new PrestaShopOrderReader(),
+            new PrestaShopRefundReader($this->db(), new SystemClock()),
+            new RefundEventNormalizer(),
+            $this->refundLedger(),
+            $this->refundSender(),
             $this->failedEventQueue(),
             $this->failureRecorder(),
             new PrestaShopLoggerAdapter(),
@@ -211,11 +236,9 @@ final class ModuleServices
         return new RetryRunner(
             $this->failedEventQueue(),
             $this->purchaseSender(),
-            new IngestionClient(new HttpTransport()),
-            $this->config(),
-            $this->secretKeyVault(),
-            $this->endpointResolver(),
+            $this->refundSender(),
             $this->purchaseLedger(),
+            $this->refundLedger(),
             $this->cartSnapshots(),
             new PrestaShopShopGroupResolver(),
             new PrestaShopLoggerAdapter(),
@@ -247,6 +270,23 @@ final class ModuleServices
         );
     }
 
+    public function refundSender(): RefundSender
+    {
+        return new RefundSender(
+            new IngestionClient(new HttpTransport()),
+            $this->config(),
+            $this->secretKeyVault(),
+            $this->endpointResolver(),
+            $this->failureRecorder(),
+            new DeliveryHealth($this->store(), new SystemClock()),
+        );
+    }
+
+    public function refundLedger(): RefundLedger
+    {
+        return new RefundLedger($this->db());
+    }
+
     public function purchaseLedger(): PurchaseLedger
     {
         return new PurchaseLedger($this->db());
@@ -262,6 +302,7 @@ final class ModuleServices
         return new OrderEventNormalizer(
             new PlatformInfo((string) $this->module->version, _PS_VERSION_, PHP_VERSION),
             new SystemClock(),
+            new PurchaseCostResolver(),
         );
     }
 

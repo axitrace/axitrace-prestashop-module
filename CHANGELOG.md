@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests, and of storefront requests on PHP-FPM, after the response is sent; no system cron needed.
 - Optional cron URL (`/module/axitrace/cron?token=...`, 403 on a wrong token) with a copy button on
   the configuration page.
+- Product costs (with the secret key): each purchase line carries its net unit cost in the order
+  currency, from the order line's supplier price, else its cost price, else the product's or
+  combination's current cost price, converted with the order's conversion rate. A line without a
+  cost is sent without one.
+- Refunds for profit (with the secret key), gross in the order currency, sent to `/v1/refund` with
+  a deterministic refund id: every credit slip (products and shipping), lines cancelled on an order
+  already sent (priced from the purchase as it was sent), and an order set to Refunded or Canceled
+  without a credit slip (the rest of the order). Each refund is sent once; undelivered refunds go to
+  the retry queue.
 
 ## [0.0.1] - 2026-11-03
 

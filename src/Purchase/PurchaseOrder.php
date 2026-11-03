@@ -37,6 +37,8 @@ final class PurchaseOrder
         public readonly ?int $customerDefaultGroupId,
         public readonly PurchaseCustomer $customer,
         public readonly array $lines,
+        /** `orders.conversion_rate`: order currency units per unit of the shop default currency. */
+        public readonly float $conversionRate = 1.0,
     ) {
     }
 }

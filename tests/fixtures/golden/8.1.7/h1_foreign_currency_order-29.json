@@ -35,7 +35,11 @@
                 "price": 21.4,
                 "currency": "USD",
                 "brand": "Studio Design",
-                "category": "Men"
+                "category": "Men",
+                "unitCost": {
+                    "amount": 6.1456,
+                    "currency": "USD"
+                }
             },
             {
                 "productId": "6",
@@ -47,7 +51,11 @@
                 "price": 13.32,
                 "currency": "USD",
                 "brand": "Studio Design",
-                "category": "Home Accessories"
+                "category": "Home Accessories",
+                "unitCost": {
+                    "amount": 11.1942,
+                    "currency": "USD"
+                }
             }
         ],
         "revenue": {

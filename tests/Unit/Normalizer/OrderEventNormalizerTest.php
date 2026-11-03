@@ -6,9 +6,11 @@ namespace Axitrace\PrestaShop\Tests\Unit\Normalizer;
 
 use Axitrace\PrestaShop\EventId\Ga4TransactionEventId;
 use Axitrace\PrestaShop\Normalizer\ClickIdReader;
+use Axitrace\PrestaShop\Http\IngestionClient;
 use Axitrace\PrestaShop\Normalizer\ConversionValueBasis;
 use Axitrace\PrestaShop\Normalizer\OrderEventNormalizer;
 use Axitrace\PrestaShop\Normalizer\PlatformInfo;
+use Axitrace\PrestaShop\Normalizer\PurchaseCostResolver;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Tests\Unit\Support\Fixtures;
 use Axitrace\PrestaShop\Tests\Unit\Support\MutableClock;
@@ -30,7 +32,7 @@ final class OrderEventNormalizerTest extends TestCase
 
     private function normalizer(): OrderEventNormalizer
     {
-        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), new MutableClock());
+        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), new MutableClock(), new PurchaseCostResolver());
     }
 
     /**
@@ -218,9 +220,11 @@ final class OrderEventNormalizerTest extends TestCase
             'currency' => 'EUR',
             'brand' => 'Studio Design',
             'category' => 'Men',
+            // purchase_supplier_price 5.49 (EUR order, conversion rate 1).
+            'unitCost' => ['amount' => 5.49, 'currency' => 'EUR'],
         ], $payload['data']['products'][0]);
         self::assertSame('0', $payload['data']['products'][1]['variantId']);
-        self::assertArrayNotHasKey('unitCost', $payload['data']['products'][0], 'costs arrive with T10');
+        self::assertSame(['amount' => 10.0, 'currency' => 'EUR'], $payload['data']['products'][1]['unitCost']);
     }
 
     public function testSplitOrdersShareTheReferenceButNotTheIds(): void
@@ -321,7 +325,11 @@ final class OrderEventNormalizerTest extends TestCase
         self::assertSame($server['eventSalt'], $browser['eventSalt']);
         self::assertSame($server['transactionId'], $browser['transactionId']);
         self::assertSame($server['data']['value'], $browser['value']);
-        self::assertSame($server['data']['products'], $browser['products']);
+        self::assertSame(IngestionClient::withoutUnitCosts($server)['data']['products'], $browser['products']);
+        foreach ($browser['products'] as $product) {
+            self::assertArrayNotHasKey('unitCost', $product, 'costs are never rendered into the page');
+        }
+        self::assertArrayHasKey('unitCost', $server['data']['products'][0]);
         self::assertSame('prestashop', $browser['source']);
         self::assertSame(['city' => 'Warsaw', 'country' => 'PL', 'state' => '', 'zip' => '00-001'], $browser['shippingAddress']);
         foreach (['ip', 'userAgent', 'clientIp', 'workspace_public_key', 'trigger', 'orderStateId'] as $key) {

@@ -1,4 +1,4 @@
-// Unit tests of views/js/axitrace-storefront.js. Run: node --test tests/js/
+// Unit tests of views/js/axitrace-storefront.js. Run: node --test tests/js/*.test.mjs
 // No DOM library: a minimal fake document/window covers what the script touches.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -146,8 +146,8 @@ class Axitrace extends Module
     }
 
     /*
-     * Hooks. Registered at install (HookRegistrar::HOOKS); the refund and GDPR behaviour arrives
-     * with later releases.
+     * Hooks. Registered at install (HookRegistrar::HOOKS); the GDPR behaviour arrives with a later
+     * release.
      */
 
     /**
@@ -334,13 +334,48 @@ class Axitrace extends Module
      */
     public function hookActionOrderSlipAdd(array $params): void
     {
+        $order = $params['order'] ?? null;
+        if (!$order instanceof Order || (int) $order->id <= 0) {
+            PrestaShopLogger::addLog('AxiTrace: actionOrderSlipAdd without an order object; the refund was not reported.', 3, null, 'Axitrace', null, true);
+
+            return;
+        }
+
+        try {
+            // 9.x passes the new slip; 8.x does not (the newest slip of the order is read).
+            $slip = $params['orderSlipCreated'] ?? null;
+            $idOrderSlip = $slip instanceof OrderSlip && (int) $slip->id > 0 ? (int) $slip->id : null;
+            $this->services()->refundHook()->onSlipAdded((int) $order->id, $idOrderSlip);
+        } catch (\Throwable $e) {
+            // RefundHook never throws; this guards the wiring (service construction) itself.
+            PrestaShopLogger::addLog(sprintf('AxiTrace: actionOrderSlipAdd failed for order %d (%s: %s)', (int) $order->id, $e::class, $e->getMessage()), 3, null, 'Axitrace', (int) $order->id, true);
+        }
     }
 
     /**
+     * Fires for every refund action (0 cancel, 1 standard refund, 2 partial refund, 3 return);
+     * only action 0 is a refund source here, the others are followed by a credit slip.
+     *
      * @param array<string, mixed> $params
      */
     public function hookActionProductCancel(array $params): void
     {
+        $order = $params['order'] ?? null;
+        $action = $params['action'] ?? null;
+        if (!$order instanceof Order || !is_numeric($action) || (int) $action !== 0) {
+            return;
+        }
+
+        try {
+            $this->services()->refundHook()->onProductCancel(
+                (int) $order->id,
+                is_numeric($params['id_order_detail'] ?? null) ? (int) $params['id_order_detail'] : 0,
+                is_numeric($params['cancel_quantity'] ?? null) ? (int) $params['cancel_quantity'] : 0,
+                (int) $action,
+            );
+        } catch (\Throwable $e) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: actionProductCancel failed for order %d (%s: %s)', (int) $order->id, $e::class, $e->getMessage()), 3, null, 'Axitrace', (int) $order->id, true);
+        }
     }
 
     /**

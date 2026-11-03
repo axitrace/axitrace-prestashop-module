@@ -35,7 +35,11 @@
                 "price": 11.9,
                 "currency": "EUR",
                 "brand": "Studio Design",
-                "category": "Home Accessories"
+                "category": "Home Accessories",
+                "unitCost": {
+                    "amount": 10.0,
+                    "currency": "EUR"
+                }
             }
         ],
         "revenue": {

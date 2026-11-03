@@ -16,16 +16,21 @@ use Axitrace\PrestaShop\Consent\ConsentGate;
 use Axitrace\PrestaShop\EventId\Ga4TransactionEventId;
 use Axitrace\PrestaShop\Exclusion\CustomerGroupExclusion;
 use Axitrace\PrestaShop\Hook\Order\OrderStatusHook;
+use Axitrace\PrestaShop\Hook\Order\RefundHook;
 use Axitrace\PrestaShop\Hook\Order\StatusChange;
 use Axitrace\PrestaShop\Http\IngestionClient;
 use Axitrace\PrestaShop\Normalizer\OrderEventNormalizer;
 use Axitrace\PrestaShop\Normalizer\PlatformInfo;
+use Axitrace\PrestaShop\Normalizer\PurchaseCostResolver;
+use Axitrace\PrestaShop\Normalizer\RefundEventNormalizer;
 use Axitrace\PrestaShop\Purchase\BrowserPurchase;
 use Axitrace\PrestaShop\Purchase\OrderRowRepository;
 use Axitrace\PrestaShop\Purchase\PurchaseEligibility;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
+use Axitrace\PrestaShop\Refund\RefundLedger;
+use Axitrace\PrestaShop\Refund\RefundSender;
 use Axitrace\PrestaShop\Retry\FailedEventQueue;
 use Axitrace\PrestaShop\Retry\LazyTrigger;
 use Axitrace\PrestaShop\Retry\RetryLock;
@@ -49,6 +54,7 @@ final class PurchasePipeline
     public SpyLogger $logger;
     public MutableClock $clock;
     public FakeScheduler $scheduler;
+    public FakeRefundReader $refundReader;
 
     /** @var array<int, int> shop id => shop group id */
     public array $shopGroups = [];
@@ -64,6 +70,7 @@ final class PurchasePipeline
         $this->db->configuration = $this->store;
         $this->scheduler = new FakeScheduler();
         $this->reader = $reader ?? new FakeOrderReader();
+        $this->refundReader = new FakeRefundReader();
         $this->transport = new FakeHttpTransport();
         $this->logger = new SpyLogger();
         $this->clock = new MutableClock(new \DateTimeImmutable('2026-11-03T22:00:00+00:00'));
@@ -103,7 +110,7 @@ final class PurchasePipeline
 
     public function normalizer(): OrderEventNormalizer
     {
-        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), $this->clock);
+        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), $this->clock, new PurchaseCostResolver());
     }
 
     public function hook(?DbGatewayInterface $db = null, ?HttpTransportInterface $transport = null): OrderStatusHook
@@ -121,11 +128,49 @@ final class PurchasePipeline
             new ConsentGate(),
             $this->normalizer(),
             $this->sender($transport),
+            $this->refundHook($db, $transport),
             $this->queue($db),
             $this->failures(),
             $this->logger,
             $this->clock,
         );
+    }
+
+    public function refundHook(?DbGatewayInterface $db = null, ?HttpTransportInterface $transport = null): RefundHook
+    {
+        $db ??= $this->db;
+
+        return new RefundHook(
+            $this->config(),
+            $this->vault(),
+            new OrderRowRepository($db),
+            $this->reader,
+            $this->refundReader,
+            new RefundEventNormalizer(),
+            new RefundLedger($db),
+            $this->refundSender($transport),
+            $this->queue($db),
+            $this->failures(),
+            $this->logger,
+            $this->clock,
+        );
+    }
+
+    public function refundSender(?HttpTransportInterface $transport = null): RefundSender
+    {
+        return new RefundSender(
+            new IngestionClient($transport ?? $this->transport),
+            $this->config(),
+            $this->vault(),
+            new EndpointResolver(new FakeEnvironment(true, [EndpointResolver::ENV_API_OVERRIDE => self::SINK]), new FakeHostResolver()),
+            $this->failures(),
+            $this->health(),
+        );
+    }
+
+    public function refundLedger(): RefundLedger
+    {
+        return new RefundLedger($this->db);
     }
 
     public function queue(?DbGatewayInterface $db = null): FailedEventQueue
@@ -143,11 +188,9 @@ final class PurchasePipeline
         return new RetryRunner(
             $this->queue(),
             $this->sender($transport),
-            new IngestionClient($transport ?? $this->transport),
-            $this->config(),
-            $this->vault(),
-            new EndpointResolver(new FakeEnvironment(true, [EndpointResolver::ENV_API_OVERRIDE => self::SINK]), new FakeHostResolver()),
+            $this->refundSender($transport),
             new PurchaseLedger($this->db),
+            new RefundLedger($this->db),
             new CartSnapshotRepository($this->db),
             new FakeShopGroupResolver($this->shopGroups),
             $this->logger,

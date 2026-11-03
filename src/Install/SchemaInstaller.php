@@ -61,6 +61,7 @@ final class SchemaInstaller
                 . '`purchase_claimed_at` DATETIME NULL,'
                 . '`purchase_sent_at` DATETIME NULL,'
                 . '`refund_state` VARCHAR(32) NULL,'
+                . '`purchase_snapshot` LONGTEXT NULL,'
                 . '`created_at` DATETIME NOT NULL,'
                 . 'PRIMARY KEY (`id_order`),'
                 . 'KEY `idx_axitrace_order_shop` (`id_shop`)'

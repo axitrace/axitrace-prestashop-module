@@ -8,6 +8,8 @@ use Axitrace\PrestaShop\Purchase\OrderStateIds;
 use Axitrace\PrestaShop\Purchase\PurchaseCustomer;
 use Axitrace\PrestaShop\Purchase\PurchaseLine;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
+use Axitrace\PrestaShop\Refund\RefundSlip;
+use Axitrace\PrestaShop\Refund\RefundSlipLine;
 
 /**
  * Reads the T1 captures (tests/fixtures/ps/<tag>/*.json): orders as the order reader would build
@@ -95,6 +97,11 @@ final class Fixtures
                     (float) $detail['unit_price_tax_excl'],
                     (int) $detail['product_id'] === 1 ? 'Men' : 'Home Accessories',
                     'Studio Design',
+                    (int) $detail['id_order_detail'],
+                    (float) $detail['purchase_supplier_price'],
+                    (float) $detail['original_wholesale_price'],
+                    // Current cost price of the demo catalogue (T1: combination 7.50, mug 10.00).
+                    (int) $detail['product_id'] === 1 ? 7.5 : 10.0,
                 );
             }
             $stateId = (int) $order['current_state'];
@@ -117,6 +124,7 @@ final class Fixtures
                 3,
                 self::customer(),
                 $lines,
+                (float) $order['conversion_rate'],
             );
         }
 
@@ -136,6 +144,67 @@ final class Fixtures
                 continue;
             }
             $calls[] = [(int) $hook['params']['id_order'], (int) $hook['params']['newOrderStatus']['id'], $hook['params']['newOrderStatus']['paid']];
+        }
+
+        return $calls;
+    }
+
+    /**
+     * The credit slips of a capture's order, as the refund reader builds them (date_add read in
+     * the tag's PS_TIMEZONE).
+     *
+     * @return list<RefundSlip>
+     */
+    public static function slips(string $tag, string $name): array
+    {
+        $facts = self::capture($tag, $name)['result']['facts'];
+        $products = [];
+        foreach ($facts['order_detail'] as $detail) {
+            $products[(int) $detail['id_order_detail']] = [(int) $detail['product_id'], (string) $detail['product_reference']];
+        }
+
+        $slips = [];
+        foreach ($facts['order_slip'] as $slip) {
+            $lines = [];
+            foreach ($facts['order_slip_detail'] as $detail) {
+                if ((int) $detail['id_order_slip'] !== (int) $slip['id_order_slip']) {
+                    continue;
+                }
+                [$productId, $reference] = $products[(int) $detail['id_order_detail']] ?? [0, ''];
+                $lines[] = new RefundSlipLine((int) $detail['id_order_detail'], $productId, $reference, (int) $detail['product_quantity'], (float) $detail['amount_tax_incl']);
+            }
+            $created = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', (string) $slip['date_add'], new \DateTimeZone(self::timezone($tag)));
+            $slips[] = new RefundSlip(
+                (int) $slip['id_order_slip'],
+                (int) $slip['id_order'],
+                (float) $slip['total_products_tax_incl'],
+                (float) $slip['total_shipping_tax_incl'],
+                ($created === false ? new \DateTimeImmutable('@0') : $created)->setTimezone(new \DateTimeZone('UTC')),
+                $lines,
+            );
+        }
+
+        return $slips;
+    }
+
+    /**
+     * The refund hook calls of a capture, in order: ['slip', id_order, id_order_slip|null] for
+     * actionOrderSlipAdd (the slip object exists on 9.x only), ['cancel', id_order, id_order_detail,
+     * cancel_quantity, action] for actionProductCancel.
+     *
+     * @return list<array<int, mixed>>
+     */
+    public static function refundCalls(string $tag, string $name): array
+    {
+        $calls = [];
+        foreach (self::capture($tag, $name)['hooks'] as $hook) {
+            $params = $hook['params'];
+            if ($hook['hook'] === 'actionOrderSlipAdd') {
+                $slip = $params['orderSlipCreated'] ?? null;
+                $calls[] = ['slip', (int) $params['order']['id'], is_array($slip) ? (int) $slip['__id'] : null];
+            } elseif ($hook['hook'] === 'actionProductCancel') {
+                $calls[] = ['cancel', (int) $params['order']['id'], (int) $params['id_order_detail'], (int) $params['cancel_quantity'], (int) $params['action']];
+            }
         }
 
         return $calls;

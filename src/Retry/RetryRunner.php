@@ -11,17 +11,15 @@ if (!defined('_PS_VERSION_')) {
 use Axitrace\PrestaShop\Adapter\ClockInterface;
 use Axitrace\PrestaShop\Adapter\LoggerInterface;
 use Axitrace\PrestaShop\Adapter\ShopGroupResolverInterface;
-use Axitrace\PrestaShop\Config\EndpointResolver;
-use Axitrace\PrestaShop\Config\ModuleConfig;
-use Axitrace\PrestaShop\Config\SecretKeyVault;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Http\DeliveryOutcome;
 use Axitrace\PrestaShop\Http\DeliveryResult;
-use Axitrace\PrestaShop\Http\IngestionClient;
 use Axitrace\PrestaShop\Http\SecretKeyRejectedException;
 use Axitrace\PrestaShop\Normalizer\OrderEventNormalizer;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
+use Axitrace\PrestaShop\Refund\RefundLedger;
+use Axitrace\PrestaShop\Refund\RefundSender;
 use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
 
 /**
@@ -29,8 +27,9 @@ use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
  * 20 rows / 1.5 s; cron URL: 200 rows). Every row is sent with the configuration of ITS shop, read
  * now: endpoint, secret key (A27). A purchase goes through {@see PurchaseSender} (same rules as the
  * first attempt: costs only with a key, keyless resend when the key is rejected); a delivered
- * purchase marks its order SENT. A refund needs the secret key: without one the attempt fails, and
- * a rejected key drops the row with a warning (it can never be delivered with that key).
+ * purchase marks its order SENT. A refund goes through {@see RefundSender}: it needs the secret
+ * key (without one the attempt fails), a rejected key drops the row with a warning (it can never
+ * be delivered with that key), and a delivered refund marks its `axitrace_refund` row sent.
  *
  * Also prunes dead rows and cart snapshots older than 30 days, and refreshes AXITRACE_RETRY_DUE_AT.
  * Never throws for a row: a row's failure is counted as a failed attempt.
@@ -45,11 +44,9 @@ final class RetryRunner
     public function __construct(
         private readonly FailedEventQueue $queue,
         private readonly PurchaseSender $purchases,
-        private readonly IngestionClient $client,
-        private readonly ModuleConfig $config,
-        private readonly SecretKeyVault $vault,
-        private readonly EndpointResolver $endpoints,
+        private readonly RefundSender $refunds,
         private readonly PurchaseLedger $ledger,
+        private readonly RefundLedger $refundLedger,
         private readonly CartSnapshotRepository $cartSnapshots,
         private readonly ShopGroupResolverInterface $shopGroups,
         private readonly LoggerInterface $logger,
@@ -109,10 +106,11 @@ final class RetryRunner
         try {
             $scope = ShopScope::shop($this->shopGroups->groupOf($event->idShop), $event->idShop);
             $result = $event->endpoint === FailedEventQueue::ENDPOINT_REFUND
-                ? $this->sendRefund($payload, $scope)
+                ? $this->refunds->send($payload, $scope)
                 : $this->purchases->send($payload, $scope);
         } catch (SecretKeyRejectedException) {
             $this->queue->delete($event->id);
+            $this->releaseRefund($event, $payload);
             $this->logger->error(sprintf('the refund %s was dropped: AxiTrace rejected the secret key, so it can never be delivered with it.', $event->eventId));
 
             return 'dropped';
@@ -122,19 +120,21 @@ final class RetryRunner
 
         if ($result->isSent()) {
             $this->queue->delete($event->id);
-            $this->markOrderSent($payload, $now);
+            $this->markDelivered($event, $payload, $now);
 
             return 'delivered';
         }
 
         if ($result->outcome->isFinalFailure()) {
             $this->queue->markDead($event, $result->error, $now);
+            $this->releaseRefund($event, $payload);
 
             return 'dead';
         }
 
         $isDead = $this->queue->recordFailure($event, $result->error, $now);
         if ($isDead) {
+            $this->releaseRefund($event, $payload);
             $this->logger->error(sprintf('the %s %s was given up after %d attempts (%s).', $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? 'refund' : 'purchase', $event->eventId, FailedEventQueue::MAX_ATTEMPTS, $result->error));
         }
 
@@ -142,26 +142,36 @@ final class RetryRunner
     }
 
     /**
+     * A delivered purchase marks its order SENT; a delivered refund its `axitrace_refund` row.
+     *
      * @param array<string, mixed> $payload
      */
-    private function sendRefund(array $payload, ShopScope $scope): DeliveryResult
+    private function markDelivered(FailedEvent $event, array $payload, \DateTimeImmutable $now): void
     {
-        $secretKey = $this->vault->read($scope)->key ?? '';
-        if ($secretKey === '') {
-            return new DeliveryResult(DeliveryOutcome::Retry, null, 'no secret key configured: refunds are sent with the secret key only');
+        if ($event->endpoint === FailedEventQueue::ENDPOINT_REFUND) {
+            if (is_string($payload['refundId'] ?? null)) {
+                $this->refundLedger->markSent($payload['refundId'], $now);
+            }
+
+            return;
         }
 
-        return $this->client->sendRefund($this->endpoints->resolve($this->config->trackingDomain($scope))->apiBaseUrl, $payload, $secretKey);
-    }
-
-    /**
-     * @param array<string, mixed> $payload
-     */
-    private function markOrderSent(array $payload, \DateTimeImmutable $now): void
-    {
         $orderId = $payload['orderId'] ?? null;
         if (($payload['event'] ?? null) === OrderEventNormalizer::EVENT && is_string($orderId) && ctype_digit($orderId)) {
             $this->ledger->markSent((int) $orderId, $now);
+        }
+    }
+
+    /**
+     * A refund that will never be delivered no longer counts as reported (a later Canceled status
+     * computes the rest without it).
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function releaseRefund(FailedEvent $event, array $payload): void
+    {
+        if ($event->endpoint === FailedEventQueue::ENDPOINT_REFUND && is_string($payload['refundId'] ?? null)) {
+            $this->refundLedger->release($payload['refundId']);
         }
     }
 

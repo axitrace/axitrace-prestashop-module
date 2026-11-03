@@ -23,6 +23,12 @@ interface DbGatewayInterface
     public function execute(string $sql): void;
 
     /**
+     * Runs an UPDATE or DELETE and returns the number of rows it changed; throws when the database
+     * reports a failure. The purchase claim relies on it: 0 rows means another request won.
+     */
+    public function update(string $sql): int;
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function select(string $sql): array;

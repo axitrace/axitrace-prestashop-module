@@ -16,7 +16,8 @@ use Axitrace\PrestaShop\Storefront\ProductView;
 /**
  * The page context the storefront script turns into commerce events, rendered as the JSON element
  * `axitrace-prestashop-context`: the product (product page), the cart (cart and checkout pages)
- * or the order (confirmation page). Product and cart data only; nothing that identifies a person.
+ * or the order (confirmation page). Product and cart data only, except the confirmation page's
+ * browser purchase, which carries the buyer's own order (that page is shown to the buyer only).
  */
 final class PageContextRenderer
 {
@@ -93,16 +94,30 @@ final class PageContextRenderer
     }
 
     /**
+     * The confirmation page context. `purchase` (the SDK transaction.charge parameters) and its
+     * `eventSalt` are present only when the order is send-eligible at render time (A20); the
+     * confirmation page is rendered for the buyer only (PrestaShop checks the cart's secure key).
+     *
+     * @param array<string, mixed>|null $purchase {@see \Axitrace\PrestaShop\Purchase\BrowserPurchase}
+     *
      * @return array<string, mixed>
      */
-    public function confirmation(ConfirmationView $order): array
+    public function confirmation(ConfirmationView $order, ?array $purchase = null): array
     {
-        return [
+        $context = [
             'type' => self::TYPE_CONFIRMATION,
             'orderId' => (string) $order->orderId,
             'orderReference' => $order->orderReference,
             'currency' => $order->currency,
         ];
+
+        $eventSalt = $purchase['eventSalt'] ?? null;
+        if ($purchase !== null && is_string($eventSalt) && $eventSalt !== '') {
+            $context['eventSalt'] = $eventSalt;
+            $context['purchase'] = $purchase;
+        }
+
+        return $context;
     }
 
     /**

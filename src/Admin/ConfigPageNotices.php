@@ -13,6 +13,7 @@ use Axitrace\PrestaShop\Config\EndpointError;
 use Axitrace\PrestaShop\Config\ResolvedEndpoints;
 use Axitrace\PrestaShop\Config\SecretKeyResult;
 use Axitrace\PrestaShop\Config\SecretKeyState;
+use Axitrace\PrestaShop\Purchase\PurchaseSender;
 
 /**
  * Error banners at the top of the configuration page. Every failure that silently changes what the
@@ -25,9 +26,11 @@ final class ConfigPageNotices
     }
 
     /**
+     * @param array{at: string, code: string, message: string}|null $lastFailure {@see \Axitrace\PrestaShop\Config\FailureRecorder::last()}
+     *
      * @return list<string> translated plain-text messages, rendered as error banners
      */
-    public function errors(ResolvedEndpoints $endpoints, SecretKeyResult $secretKey): array
+    public function errors(ResolvedEndpoints $endpoints, SecretKeyResult $secretKey, ?array $lastFailure = null): array
     {
         $t = $this->translator;
         $errors = [];
@@ -48,6 +51,14 @@ final class ConfigPageNotices
 
         if ($secretKey->state === SecretKeyState::Undecryptable) {
             $errors[] = $t->trans('The saved secret key can no longer be decrypted, most likely because the shop encryption key changed. Re-enter the secret key; until then purchases are sent without costs.', [], 'Modules.Axitrace.Admin');
+        }
+
+        $code = $lastFailure['code'] ?? null;
+        if ($code === PurchaseSender::FAILURE_PUBLIC_KEY_REJECTED) {
+            $errors[] = $t->trans('Public key rejected: AxiTrace does not recognise the public key, so purchases are not tracked. Copy the public key of your workspace again.', [], 'Modules.Axitrace.Admin');
+        }
+        if ($code === PurchaseSender::FAILURE_SECRET_KEY_REJECTED) {
+            $errors[] = $t->trans('Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs. Enter the secret key of the same workspace as the public key.', [], 'Modules.Axitrace.Admin');
         }
 
         return $errors;

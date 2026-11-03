@@ -23,6 +23,11 @@ final class ThrowingDb implements DbGatewayInterface
         throw new \RuntimeException('Database statement failed: Lost connection');
     }
 
+    public function update(string $sql): int
+    {
+        throw new \RuntimeException('Database statement failed: Lost connection');
+    }
+
     public function select(string $sql): array
     {
         throw new \RuntimeException('Database query failed: Lost connection');

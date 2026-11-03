@@ -59,6 +59,33 @@ final class InMemoryModuleDb implements DbGatewayInterface
         throw new \LogicException('Statement not supported by the fake: ' . $sql);
     }
 
+    /** @var int number of UPDATE statements that changed no row */
+    public int $noOpUpdates = 0;
+
+    public function update(string $sql): int
+    {
+        $this->executed[] = $sql;
+
+        if (preg_match('/^UPDATE `ps_axitrace_order` SET (.*) WHERE `id_order` = (\d+)(?: AND `(\w+)` IS NULL)?$/s', $sql, $m) !== 1) {
+            throw new \LogicException('Statement not supported by the fake: ' . $sql);
+        }
+
+        $id = (int) $m[2];
+        $guard = $m[3] ?? '';
+        if (!isset($this->orders[$id]) || ($guard !== '' && ($this->orders[$id][$guard] ?? null) !== null)) {
+            ++$this->noOpUpdates;
+
+            return 0;
+        }
+
+        preg_match_all("/`(\w+)` = (?:'((?:[^'\\\\]|\\\\.)*)'|(NULL))/", $m[1], $assignments, \PREG_SET_ORDER | \PREG_UNMATCHED_AS_NULL);
+        foreach ($assignments as $assignment) {
+            $this->orders[$id][(string) $assignment[1]] = ($assignment[3] ?? null) === 'NULL' ? null : stripslashes((string) $assignment[2]);
+        }
+
+        return 1;
+    }
+
     public function select(string $sql): array
     {
         if (preg_match('/FROM `ps_axitrace_cart_snapshot` WHERE `id_cart` = (\d+)/', $sql, $m) === 1) {

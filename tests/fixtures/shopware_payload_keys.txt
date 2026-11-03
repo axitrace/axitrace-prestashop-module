@@ -1,0 +1,75 @@
+# Key set of the AxiTrace Shopware plugin purchase payload
+# (shopware-plugin/src/Normalizer/OrderEventNormalizer.php, normalize(), return array :325-355 and the
+# `data` block built above it). The PrestaShop normalizer must produce the same keys (A38), so
+# event-worker needs no PrestaShop-specific code.
+#
+# Format: <section> <key> [optional]
+#   top      top-level key, always present
+#   data     key of `data`; "optional" = omitted when the order carries no value
+#   client   key of `data.client`
+#   product  key of each `data.products[]`
+top event
+top eventSalt
+top event_id
+top transactionId
+top orderId
+top workspace_public_key
+top source
+top timestamp
+top ip
+top userAgent
+top pluginVersion
+top sdkVersion
+top userId
+top sessionId
+top billingCity
+top billingCountry
+top billingZip
+top billingState
+top data
+data client
+data products
+data revenue
+data value
+data orderNumber
+data tax
+data shipping
+data valueBasis
+data taxesIncluded optional
+data paymentInfo optional
+data fbp optional
+data fbc optional
+data ttp optional
+data rdt_uuid optional
+data obref optional
+data gclid optional
+data gbraid optional
+data wbraid optional
+data ttclid optional
+data rdt_cid optional
+data oppref optional
+data msclkid optional
+data twclid optional
+data epik optional
+data li_fat_id optional
+data sccid optional
+data _ga optional
+data ga_session_id optional
+data consent optional
+data url optional
+client email
+client phone
+client firstName
+client lastName
+product productId
+product externalId optional
+product sku
+product name
+product quantity
+product price
+product currency
+product variant optional
+product brand optional
+product category optional
+product pinterest_id optional
+product unitCost optional

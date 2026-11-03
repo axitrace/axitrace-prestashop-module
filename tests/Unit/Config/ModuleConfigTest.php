@@ -93,6 +93,6 @@ final class ModuleConfigTest extends TestCase
         foreach (ModuleConfig::ALL_KEYS as $key) {
             self::assertStringStartsWith(ModuleConfig::PREFIX, $key);
         }
-        self::assertCount(14, array_unique(ModuleConfig::ALL_KEYS));
+        self::assertCount(count(ModuleConfig::ALL_KEYS), array_unique(ModuleConfig::ALL_KEYS));
     }
 }

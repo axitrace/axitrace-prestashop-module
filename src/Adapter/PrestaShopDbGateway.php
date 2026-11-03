@@ -28,6 +28,16 @@ final class PrestaShopDbGateway implements DbGatewayInterface
         }
     }
 
+    public function update(string $sql): int
+    {
+        $db = \Db::getInstance();
+        if (!$db->execute($sql)) {
+            throw new \RuntimeException(sprintf('Database statement failed: %s', $db->getMsgError()));
+        }
+
+        return (int) $db->Affected_Rows();
+    }
+
     public function select(string $sql): array
     {
         $db = \Db::getInstance();

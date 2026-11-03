@@ -92,12 +92,26 @@ final class PageContextRendererTest extends TestCase
         (new PageContextRenderer())->cart('product', new CartView(0.0, 'EUR', []));
     }
 
-    public function testConfirmationContextHasNoCustomerData(): void
+    public function testConfirmationWithoutEligiblePurchaseHasNoCustomerData(): void
     {
         $renderer = new PageContextRenderer();
         $context = $renderer->confirmation(new ConfirmationView(12, 'XKBKNABJK', 'EUR'));
 
         self::assertSame(['type' => 'confirmation', 'orderId' => '12', 'orderReference' => 'XKBKNABJK', 'currency' => 'EUR'], $context);
+        self::assertSame($context, $renderer->confirmation(new ConfirmationView(12, 'XKBKNABJK', 'EUR'), ['value' => 1, 'eventSalt' => '']));
+    }
+
+    public function testConfirmationCarriesTheBrowserPurchaseAndItsEventSalt(): void
+    {
+        $renderer = new PageContextRenderer();
+        $purchase = ['eventSalt' => '0c6c4f5e-5d0f-5e0b-9c07-3b8a9f6a1d11', 'value' => ['amount' => 57.14, 'currency' => 'EUR'], 'client' => ['email' => '</script>@example.com']];
+
+        $json = $renderer->encode($renderer->confirmation(new ConfirmationView(12, 'XKBKNABJK', 'EUR'), $purchase));
+        $context = json_decode($json, true);
+
+        self::assertSame('0c6c4f5e-5d0f-5e0b-9c07-3b8a9f6a1d11', $context['eventSalt']);
+        self::assertSame($purchase, $context['purchase']);
+        self::assertStringNotContainsString('<', $json);
     }
 
     public function testHostileProductNameCannotCloseTheElement(): void

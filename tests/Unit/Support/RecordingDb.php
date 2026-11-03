@@ -30,6 +30,13 @@ final class RecordingDb implements DbGatewayInterface
         $this->executed[] = $sql;
     }
 
+    public function update(string $sql): int
+    {
+        $this->executed[] = $sql;
+
+        return 1;
+    }
+
     public function select(string $sql): array
     {
         return [];

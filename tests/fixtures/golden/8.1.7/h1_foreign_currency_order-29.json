@@ -1,0 +1,95 @@
+{
+    "event": "transaction.charge",
+    "eventSalt": "26139f2b-dd41-5414-8225-d7df097312e3",
+    "event_id": "26139f2b-dd41-5414-8225-d7df097312e3",
+    "transactionId": "29",
+    "orderId": "29",
+    "workspace_public_key": "pk_live_0123456789abcdef0123456789abcdef",
+    "source": "prestashop",
+    "timestamp": "2026-11-03T21:41:04Z",
+    "ip": "203.0.113.7",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0 Safari/537.36",
+    "pluginVersion": "0.0.1",
+    "sdkVersion": "prestashop-1.0",
+    "userId": "visitor-0001",
+    "sessionId": "session-0001",
+    "billingCity": "Warsaw",
+    "billingCountry": "PL",
+    "billingZip": "00-001",
+    "billingState": "",
+    "data": {
+        "client": {
+            "email": "buyer@example.com",
+            "phone": "+48500100200",
+            "firstName": "Ada",
+            "lastName": "Lovelace"
+        },
+        "products": [
+            {
+                "productId": "1",
+                "externalId": "prestashop:1",
+                "variantId": "1",
+                "sku": "demo_1",
+                "name": "Hummingbird printed t-shirt - Size : S- Color : White",
+                "quantity": 2.0,
+                "price": 21.4,
+                "currency": "USD",
+                "brand": "Studio Design",
+                "category": "Men"
+            },
+            {
+                "productId": "6",
+                "externalId": "prestashop:6",
+                "variantId": "0",
+                "sku": "demo_11",
+                "name": "Mug The best is yet to come",
+                "quantity": 1.0,
+                "price": 13.32,
+                "currency": "USD",
+                "brand": "Studio Design",
+                "category": "Home Accessories"
+            }
+        ],
+        "revenue": {
+            "amount": 63.97,
+            "currency": "USD"
+        },
+        "value": {
+            "amount": 63.97,
+            "currency": "USD"
+        },
+        "fbp": "fb.1.1793742000000.1234567890",
+        "fbc": "fb.1.1793742000000.IwAR123",
+        "ttp": "ttp-cookie-0001",
+        "rdt_uuid": "1793742000000.6a0b2c1d-1111-4222-8333-944455556666",
+        "obref": "obref-1",
+        "_ga": "GA1.1.123456789.1793742000",
+        "ga_session_id": "GS1.1.1793742000.1.1.1793742500.0.0.0",
+        "url": "http://localhost:8181/en/order",
+        "gclid": "click-gclid",
+        "gbraid": "click-gbraid",
+        "wbraid": "click-wbraid",
+        "ttclid": "click-ttclid",
+        "rdt_cid": "click-rdt_cid",
+        "oppref": "click-oppref",
+        "msclkid": "click-msclkid",
+        "twclid": "click-twclid",
+        "epik": "click-epik",
+        "li_fat_id": "click-li_fat_id",
+        "sccid": "click-sccid",
+        "consent": "granted",
+        "orderNumber": "29",
+        "tax": 0.0,
+        "shipping": 7.84,
+        "valueBasis": "gross_total",
+        "paymentInfo": {
+            "method": "ps_wirepayment"
+        },
+        "orderReference": "EBBRGOFRU",
+        "cartId": "26",
+        "psVersion": "8.1.7",
+        "phpVersion": "8.1.34",
+        "trigger": "paid",
+        "orderStateId": 10
+    }
+}

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Server-side purchase: sent once per order from the order status change, when the order reaches a
+  paid status or is placed with a cash on delivery module (Cash on delivery modules setting), to
+  `/v1/plugin/pixel` with the order date in UTC and the same event id as the browser purchase.
+  Payment errors, awaiting payment and repeated statuses never send; an order cancelled or refunded
+  before it was sent is recorded as void. Customers of an excluded group and orders without consent
+  in mode "browser and server-side" are not sent.
+- Browser purchase on the order confirmation page, only for paid and cash on delivery orders, once
+  per order per browser tab.
+- Short timeouts (1 s connect, 2 s total); a rejected secret key resends the purchase without costs;
+  rejected public or secret keys are shown on the configuration page.
+
 ## [0.0.1] - 2026-11-03
 
 ### Added

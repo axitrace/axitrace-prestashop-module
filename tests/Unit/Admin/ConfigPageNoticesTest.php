@@ -47,4 +47,20 @@ final class ConfigPageNoticesTest extends TestCase
 
         self::assertSame(['Developer endpoint override active: http://localhost:8080'], $errors);
     }
+
+    public function testRejectedKeysFromTheLastFailureAreShown(): void
+    {
+        $notices = new ConfigPageNotices(new EchoTranslator());
+        $endpoints = new ResolvedEndpoints('https://stat.axitrace.com', 'https://stat.axitrace.com');
+
+        self::assertSame(
+            ['Public key rejected: AxiTrace does not recognise the public key, so purchases are not tracked. Copy the public key of your workspace again.'],
+            $notices->errors($endpoints, SecretKeyResult::absent(), ['at' => '', 'code' => 'public_key_rejected', 'message' => '']),
+        );
+        self::assertSame(
+            ['Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs. Enter the secret key of the same workspace as the public key.'],
+            $notices->errors($endpoints, SecretKeyResult::present('sk_live_x'), ['at' => '', 'code' => 'secret_key_rejected', 'message' => '']),
+        );
+        self::assertSame([], $notices->errors($endpoints, SecretKeyResult::absent(), ['at' => '', 'code' => 'delivery_failed', 'message' => '']));
+    }
 }

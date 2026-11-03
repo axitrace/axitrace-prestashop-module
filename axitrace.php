@@ -20,6 +20,7 @@ use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
 use Axitrace\PrestaShop\Hook\Order\PlacedOrder;
+use Axitrace\PrestaShop\Hook\Order\StatusChange;
 use Axitrace\PrestaShop\Install\VersionGuard;
 use Axitrace\PrestaShop\ModuleServices;
 
@@ -130,7 +131,7 @@ class Axitrace extends Module
         $endpoints = $services->endpointResolver()->resolve($services->config()->trackingDomain($scope));
 
         $this->smarty()->assign([
-            'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey),
+            'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey, $services->failureRecorder()->last($scope)),
         ]);
 
         $values = $handler->currentValues($scope);
@@ -144,7 +145,7 @@ class Axitrace extends Module
     }
 
     /*
-     * Hooks. Registered at install (HookRegistrar::HOOKS); the order, refund and GDPR behaviour arrives
+     * Hooks. Registered at install (HookRegistrar::HOOKS); the refund and GDPR behaviour arrives
      * with later releases.
      */
 
@@ -232,8 +233,9 @@ class Axitrace extends Module
             }
 
             $renderer = $this->services()->pageContextRenderer();
+            $purchase = $this->services()->browserPurchase()->forOrder($view->orderId);
 
-            return $this->renderJsonTemplate('context.tpl', $renderer->encode($renderer->confirmation($view)));
+            return $this->renderJsonTemplate('context.tpl', $renderer->encode($renderer->confirmation($view, $purchase)));
         } catch (\Throwable $e) {
             return $this->storefrontFailure('displayOrderConfirmation', $e);
         }
@@ -306,6 +308,21 @@ class Axitrace extends Module
      */
     public function hookActionOrderStatusPostUpdate(array $params): void
     {
+        $state = $params['newOrderStatus'] ?? null;
+        $idOrder = $params['id_order'] ?? null;
+        if (!$state instanceof OrderState || !is_numeric($idOrder) || (int) $idOrder <= 0) {
+            PrestaShopLogger::addLog('AxiTrace: actionOrderStatusPostUpdate without an order id or OrderState; the status change was ignored.', 3, null, 'Axitrace', null, true);
+
+            return;
+        }
+
+        try {
+            // OrderState::$paid is a string ("1") on some versions, an int on others.
+            $this->services()->orderStatusHook()->handle(StatusChange::fromHookValues($idOrder, $state->id, $state->paid));
+        } catch (\Throwable $e) {
+            // OrderStatusHook never throws; this guards the wiring (service construction) itself.
+            PrestaShopLogger::addLog(sprintf('AxiTrace: actionOrderStatusPostUpdate failed for order %d (%s: %s)', (int) $idOrder, $e::class, $e->getMessage()), 3, null, 'Axitrace', (int) $idOrder, true);
+        }
     }
 
     /**

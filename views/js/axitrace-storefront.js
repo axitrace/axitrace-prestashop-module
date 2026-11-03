@@ -10,6 +10,9 @@
  *                        (product page, quick view and listing buttons; core.js, both themes)
  *   - begin_checkout     once per checkout page load
  *   - add_payment_info   once per checkout page load, when a payment option is selected
+ *   - transaction.charge order confirmation page, only when the module rendered a purchase (the
+ *                        order is paid or cash on delivery), with the server purchase's eventSalt
+ *                        so AxiTrace keeps one; once per order id (sessionStorage guard)
  *
  * Consent (port of the Shopware plugin bootstrap): only the POLICY is rendered into the page
  * (consentMode, consentCookie); the DECISION is made here, in the visitor's own browser, because a
@@ -52,6 +55,8 @@
     var CONSENT_POLL_INTERVAL_MS = 500;
     var CONSENT_POLL_MAX_TICKS = 120; // 60 s
     var MAX_PENDING_EVENTS = 50;
+    var PURCHASE_GUARD_PREFIX = 'axitrace_ps_purchase_';
+    var UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     var ADD_FORM_MAX_AGE_MS = 30000;
 
     function isGrantSignal(raw) {
@@ -217,6 +222,25 @@
         return data;
     }
 
+    function sessionFlag(win, key) {
+        try {
+            return !!(win.sessionStorage && win.sessionStorage.getItem(key) === '1');
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function setSessionFlag(win, key) {
+        try {
+            if (win.sessionStorage) {
+                win.sessionStorage.setItem(key, '1');
+            }
+        } catch (e) {
+            // Storage unavailable: a reload may send the purchase again, which the shared
+            // eventSalt deduplicates in AxiTrace.
+        }
+    }
+
     /**
      * Creates the storefront tracker for one page. Returns null when the page has no usable
      * configuration or the script already ran (double init guard).
@@ -254,8 +278,14 @@
 
         // ---------------------------------------------------------------- sending
 
-        function send(eventName, data) {
+        // beforeTrack (optional) runs when the event is handed to the SDK, not when it is queued:
+        // returning false drops it (the purchase guard must not be set for an event that never
+        // left, for example while consent is still pending).
+        function send(eventName, data, beforeTrack) {
             if (tracker) {
+                if (beforeTrack && beforeTrack() === false) {
+                    return;
+                }
                 try {
                     tracker.track(eventName, data);
                     debug('track ' + eventName, data);
@@ -265,7 +295,7 @@
                 return;
             }
             if (pending.length < MAX_PENDING_EVENTS) {
-                pending.push([eventName, data]);
+                pending.push([eventName, data, beforeTrack]);
             }
         }
 
@@ -273,7 +303,7 @@
             var queued = pending;
             pending = [];
             for (var i = 0; i < queued.length; i++) {
-                send(queued[i][0], queued[i][1]);
+                send(queued[i][0], queued[i][1], queued[i][2]);
             }
         }
 
@@ -573,6 +603,41 @@
                 checkoutSent = true;
                 send('begin_checkout', cartEventData(context));
             }
+            if (context.type === 'confirmation') {
+                trackPurchase();
+            }
+        }
+
+        function trackPurchase() {
+            var purchase = context.purchase;
+            var orderId = String(context.orderId || '');
+            if (!purchase || typeof purchase !== 'object' || !orderId
+                || typeof context.eventSalt !== 'string' || !UUID_SHAPE.test(context.eventSalt)) {
+                debug('order confirmation without a purchase - left to the server');
+                return;
+            }
+            var guard = PURCHASE_GUARD_PREFIX + orderId;
+            if (sessionFlag(win, guard)) {
+                debug('purchase already sent from this tab', orderId);
+                return;
+            }
+            var data = {};
+            for (var key in purchase) {
+                if (Object.prototype.hasOwnProperty.call(purchase, key)) {
+                    data[key] = purchase[key];
+                }
+            }
+            data.eventSalt = context.eventSalt;
+            data.transactionId = orderId;
+            data.orderId = orderId;
+            data.source = SOURCE;
+            send('transaction.charge', data, function () {
+                if (sessionFlag(win, guard)) {
+                    return false;
+                }
+                setSessionFlag(win, guard);
+                return true;
+            });
         }
 
         // ---------------------------------------------------------------- start

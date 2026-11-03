@@ -413,3 +413,107 @@ test('grant signal mirrors ConsentGate::isGrantSignal', () => {
     assert.equal(storefront.isGrantSignal('1'), true);
     assert.equal(storefront.isGrantSignal('{"marketing":true}'), true);
 });
+
+// ------------------------------------------------------------------ confirmation purchase (T8)
+
+const SALT = '0c6c4f5e-5d0f-5e0b-9c07-3b8a9f6a1d11';
+
+function confirmationContext(extra = {}) {
+    return {
+        type: 'confirmation',
+        orderId: '30',
+        orderReference: 'QDVGHUQCV',
+        currency: 'EUR',
+        eventSalt: SALT,
+        purchase: {
+            client: { email: 'buyer@example.com' },
+            products: [{ productId: '1', quantity: 2, price: 19.12, currency: 'EUR' }],
+            value: { amount: 57.14, currency: 'EUR' },
+            revenue: { amount: 57.14, currency: 'EUR' },
+            orderNumber: '30',
+            eventSalt: SALT,
+            transactionId: '30',
+            orderId: '30',
+        },
+        ...extra,
+    };
+}
+
+function fakeSessionStorage() {
+    const data = {};
+    return {
+        data,
+        getItem: (k) => (Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null),
+        setItem: (k, v) => { data[k] = String(v); },
+    };
+}
+
+test('confirmation: transaction.charge with the server eventSalt and the order id', () => {
+    const page = makePage({ context: confirmationContext() });
+    page.win.sessionStorage = fakeSessionStorage();
+    storefront.boot(page.win, page.doc);
+
+    const charges = page.events.filter(([name]) => name === 'transaction.charge');
+    assert.equal(charges.length, 1);
+    const [, data] = charges[0];
+    assert.equal(data.eventSalt, SALT);
+    assert.equal(data.transactionId, '30');
+    assert.equal(data.orderId, '30');
+    assert.equal(data.source, 'prestashop');
+    assert.deepEqual(data.value, { amount: 57.14, currency: 'EUR' });
+    assert.equal(page.win.sessionStorage.data.axitrace_ps_purchase_30, '1');
+});
+
+test('confirmation: a reload in the same tab does not send the purchase again', () => {
+    const storage = fakeSessionStorage();
+    const first = makePage({ context: confirmationContext() });
+    first.win.sessionStorage = storage;
+    storefront.boot(first.win, first.doc);
+
+    const reload = makePage({ context: confirmationContext() });
+    reload.win.sessionStorage = storage;
+    storefront.boot(reload.win, reload.doc);
+
+    assert.equal(first.events.filter(([name]) => name === 'transaction.charge').length, 1);
+    assert.equal(reload.events.filter(([name]) => name === 'transaction.charge').length, 0);
+});
+
+test('confirmation without an eligible purchase (bank wire awaiting): no browser purchase', () => {
+    const context = confirmationContext();
+    delete context.purchase;
+    delete context.eventSalt;
+    const page = makePage({ context });
+    page.win.sessionStorage = fakeSessionStorage();
+    storefront.boot(page.win, page.doc);
+
+    assert.equal(page.events.filter(([name]) => name === 'transaction.charge').length, 0);
+    assert.deepEqual(page.win.sessionStorage.data, {});
+});
+
+test('confirmation: a malformed eventSalt never sends (the SDK would mint a fresh id)', () => {
+    const page = makePage({ context: confirmationContext({ eventSalt: 'not-a-uuid' }) });
+    storefront.boot(page.win, page.doc);
+
+    assert.equal(page.events.filter(([name]) => name === 'transaction.charge').length, 0);
+});
+
+test('confirmation in consent mode browser: the guard is set only once the purchase really leaves', () => {
+    const page = makePage({ context: confirmationContext(), config: { consentMode: 'browser', consentCookie: 'cookie_consent' } });
+    page.win.sessionStorage = fakeSessionStorage();
+    const tracker = storefront.boot(page.win, page.doc);
+
+    assert.equal(tracker.isBooted(), false);
+    assert.equal(tracker.pendingCount(), 1);
+    assert.deepEqual(page.win.sessionStorage.data, {}, 'no consent yet: nothing sent, nothing remembered');
+
+    page.win.axitraceConsent.grant();
+    assert.equal(page.events.filter(([name]) => name === 'transaction.charge').length, 1);
+    assert.equal(page.win.sessionStorage.data.axitrace_ps_purchase_30, '1');
+});
+
+test('confirmation without sessionStorage still sends once per page', () => {
+    const page = makePage({ context: confirmationContext() });
+    storefront.boot(page.win, page.doc);
+
+    assert.equal(page.events.filter(([name]) => name === 'transaction.charge').length, 1);
+});

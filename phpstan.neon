@@ -1,0 +1,16 @@
+# Level 8 on the PrestaShop-independent code. src/Adapter/ (and axitrace.php) call PrestaShop
+# classes and need the PrestaShop source (_PS_ROOT_DIR_), wired in CI by T5.
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    excludePaths:
+        - src/Adapter/PrestaShop*.php
+        - src/Adapter/PhpEncryptionCipher.php
+        - src/Adapter/ModuleTranslator.php
+        - src/ModuleServices.php
+        - src/*/index.php
+        - src/index.php
+    bootstrapFiles:
+        - tests/bootstrap.php

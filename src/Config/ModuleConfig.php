@@ -93,6 +93,7 @@ final class ModuleConfig
             self::COD_MODULES => self::DEFAULT_COD_MODULES,
             self::EXCLUDED_GROUPS => '',
             self::DEBUG => '0',
+            self::RETRY_LOCK => '0',
         ];
     }
 

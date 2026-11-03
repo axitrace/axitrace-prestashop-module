@@ -132,6 +132,7 @@ class Axitrace extends Module
 
         $this->smarty()->assign([
             'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey, $services->failureRecorder()->last($scope)),
+            'axitrace_cron_url' => $this->cronUrl($services->config()->cronToken()),
         ]);
 
         $values = $handler->currentValues($scope);
@@ -154,6 +155,8 @@ class Axitrace extends Module
      */
     public function hookDisplayHeader(array $params): string
     {
+        $this->scheduleRetries(true);
+
         try {
             $phpSelf = $this->phpSelf();
             $scope = ShopScope::context();
@@ -280,6 +283,7 @@ class Axitrace extends Module
      */
     public function hookActionAdminControllerSetMedia(array $params): void
     {
+        $this->scheduleRetries(false);
     }
 
     /**
@@ -364,6 +368,19 @@ class Axitrace extends Module
         return (string) json_encode(true);
     }
 
+    /**
+     * Lazy retry trigger (A25): when a queued delivery is due, a small batch runs at the end of this
+     * request. A failure here never touches the page.
+     */
+    private function scheduleRetries(bool $storefront): void
+    {
+        try {
+            $this->services()->lazyTrigger()->maybeSchedule($storefront);
+        } catch (\Throwable $e) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: scheduling the retry run failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, false);
+        }
+    }
+
     private function services(): ModuleServices
     {
         return $this->services ??= new ModuleServices($this);
@@ -409,6 +426,17 @@ class Axitrace extends Module
         }
 
         return (string) $link->getModuleLink((string) $this->name, 'status');
+    }
+
+    /** The optional cron URL of the default shop (the queue is drained for every shop). */
+    private function cronUrl(string $token): string
+    {
+        $link = $this->context->link;
+        if (!$link instanceof Link || $token === '') {
+            return '';
+        }
+
+        return (string) $link->getModuleLink((string) $this->name, 'cron', ['token' => $token], null, null, (int) Configuration::get('PS_SHOP_DEFAULT'));
     }
 
     private function renderJsonTemplate(string $template, string $json): string

@@ -18,8 +18,10 @@ use Axitrace\PrestaShop\Adapter\PrestaShopDbGateway;
 use Axitrace\PrestaShop\Adapter\PrestaShopLoggerAdapter;
 use Axitrace\PrestaShop\Adapter\PrestaShopOrderReader;
 use Axitrace\PrestaShop\Adapter\PrestaShopRequestContext;
+use Axitrace\PrestaShop\Adapter\PrestaShopShopGroupResolver;
 use Axitrace\PrestaShop\Adapter\PrestaShopStorefrontReader;
 use Axitrace\PrestaShop\Adapter\ProcessEnvironment;
+use Axitrace\PrestaShop\Adapter\ShutdownScheduler;
 use Axitrace\PrestaShop\Adapter\SystemClock;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Admin\ConfigPageNotices;
@@ -48,6 +50,11 @@ use Axitrace\PrestaShop\Purchase\OrderRowRepository;
 use Axitrace\PrestaShop\Purchase\PurchaseEligibility;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
+use Axitrace\PrestaShop\Retry\CronResponder;
+use Axitrace\PrestaShop\Retry\FailedEventQueue;
+use Axitrace\PrestaShop\Retry\LazyTrigger;
+use Axitrace\PrestaShop\Retry\RetryLock;
+use Axitrace\PrestaShop\Retry\RetryRunner;
 use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
 use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
 
@@ -61,6 +68,9 @@ final class ModuleServices
     private ?PrestaShopConfigurationStore $store = null;
     private ?ModuleConfig $config = null;
     private ?SecretKeyVault $vault = null;
+
+    /** One shutdown scheduler per request, whichever hook schedules first. */
+    private static ?ShutdownScheduler $scheduler = null;
 
     public function __construct(private readonly \Module $module)
     {
@@ -167,7 +177,47 @@ final class ModuleServices
             new ConsentGate(),
             $this->orderEventNormalizer(),
             $this->purchaseSender(),
+            $this->failedEventQueue(),
             $this->failureRecorder(),
+            new PrestaShopLoggerAdapter(),
+            new SystemClock(),
+        );
+    }
+
+    public function failedEventQueue(): FailedEventQueue
+    {
+        return new FailedEventQueue($this->db(), $this->store());
+    }
+
+    public function lazyTrigger(): LazyTrigger
+    {
+        return new LazyTrigger(
+            $this->failedEventQueue(),
+            new RetryLock($this->db(), $this->store()),
+            $this->retryRunner(),
+            self::$scheduler ??= new ShutdownScheduler(),
+            new PrestaShopLoggerAdapter(),
+            new SystemClock(),
+        );
+    }
+
+    public function cronResponder(): CronResponder
+    {
+        return new CronResponder($this->lazyTrigger());
+    }
+
+    private function retryRunner(): RetryRunner
+    {
+        return new RetryRunner(
+            $this->failedEventQueue(),
+            $this->purchaseSender(),
+            new IngestionClient(new HttpTransport()),
+            $this->config(),
+            $this->secretKeyVault(),
+            $this->endpointResolver(),
+            $this->purchaseLedger(),
+            $this->cartSnapshots(),
+            new PrestaShopShopGroupResolver(),
             new PrestaShopLoggerAdapter(),
             new SystemClock(),
         );

@@ -26,6 +26,10 @@ use Axitrace\PrestaShop\Purchase\PurchaseEligibility;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
+use Axitrace\PrestaShop\Retry\FailedEventQueue;
+use Axitrace\PrestaShop\Retry\LazyTrigger;
+use Axitrace\PrestaShop\Retry\RetryLock;
+use Axitrace\PrestaShop\Retry\RetryRunner;
 use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
 
 /**
@@ -44,6 +48,10 @@ final class PurchasePipeline
     public FakeHttpTransport $transport;
     public SpyLogger $logger;
     public MutableClock $clock;
+    public FakeScheduler $scheduler;
+
+    /** @var array<int, int> shop id => shop group id */
+    public array $shopGroups = [];
 
     public function __construct(?FakeOrderReader $reader = null)
     {
@@ -51,7 +59,10 @@ final class PurchasePipeline
         $this->store->setGlobal(ModuleConfig::ENABLED, '1');
         $this->store->setGlobal(ModuleConfig::PUBLIC_KEY, self::PK);
         $this->store->setGlobal(ModuleConfig::COD_MODULES, ModuleConfig::DEFAULT_COD_MODULES);
+        $this->store->setGlobal(ModuleConfig::RETRY_LOCK, '0');
         $this->db = new InMemoryModuleDb();
+        $this->db->configuration = $this->store;
+        $this->scheduler = new FakeScheduler();
         $this->reader = $reader ?? new FakeOrderReader();
         $this->transport = new FakeHttpTransport();
         $this->logger = new SpyLogger();
@@ -110,10 +121,43 @@ final class PurchasePipeline
             new ConsentGate(),
             $this->normalizer(),
             $this->sender($transport),
+            $this->queue($db),
             $this->failures(),
             $this->logger,
             $this->clock,
         );
+    }
+
+    public function queue(?DbGatewayInterface $db = null): FailedEventQueue
+    {
+        return new FailedEventQueue($db ?? $this->db, $this->store);
+    }
+
+    public function lock(): RetryLock
+    {
+        return new RetryLock($this->db, $this->store);
+    }
+
+    public function runner(?HttpTransportInterface $transport = null): RetryRunner
+    {
+        return new RetryRunner(
+            $this->queue(),
+            $this->sender($transport),
+            new IngestionClient($transport ?? $this->transport),
+            $this->config(),
+            $this->vault(),
+            new EndpointResolver(new FakeEnvironment(true, [EndpointResolver::ENV_API_OVERRIDE => self::SINK]), new FakeHostResolver()),
+            new PurchaseLedger($this->db),
+            new CartSnapshotRepository($this->db),
+            new FakeShopGroupResolver($this->shopGroups),
+            $this->logger,
+            $this->clock,
+        );
+    }
+
+    public function lazyTrigger(): LazyTrigger
+    {
+        return new LazyTrigger($this->queue(), $this->lock(), $this->runner(), $this->scheduler, $this->logger, $this->clock);
     }
 
     public function browserPurchase(): BrowserPurchase

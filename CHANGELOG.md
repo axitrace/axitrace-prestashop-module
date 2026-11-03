@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per order per browser tab.
 - Short timeouts (1 s connect, 2 s total); a rejected secret key resends the purchase without costs;
   rejected public or secret keys are shown on the configuration page.
+- Retry queue for purchases (and, later, refunds) that could not be delivered: same event id,
+  retries after 5 minutes, doubling up to 6 hours, at most 10 attempts, failed entries kept 30 days;
+  the secret key is never stored in the queue. Retries run at the end of ordinary back-office
+  requests, and of storefront requests on PHP-FPM, after the response is sent; no system cron needed.
+- Optional cron URL (`/module/axitrace/cron?token=...`, 403 on a wrong token) with a copy button on
+  the configuration page.
 
 ## [0.0.1] - 2026-11-03
 

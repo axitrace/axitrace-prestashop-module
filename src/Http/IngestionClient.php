@@ -50,6 +50,23 @@ final class IngestionClient
     }
 
     /**
+     * A refund or cancellation for profit (`/v1/refund`). That endpoint accepts secret-key
+     * authentication only, so a refund is never sent without a key.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @throws SecretKeyRejectedException when AxiTrace rejected the key (never resent)
+     */
+    public function sendRefund(string $apiBaseUrl, array $payload, string $secretKey): DeliveryResult
+    {
+        if ($secretKey === '') {
+            throw new \InvalidArgumentException('AxiTrace refunds require the secret key.');
+        }
+
+        return $this->post(rtrim($apiBaseUrl, '/') . self::REFUND_PATH, $payload, $secretKey);
+    }
+
+    /**
      * @param array<string, mixed> $payload
      *
      * @throws SecretKeyRejectedException when a request sent with $secretKey got HTTP 401

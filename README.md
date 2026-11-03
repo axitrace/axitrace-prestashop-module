@@ -47,6 +47,15 @@ PrestaShop 1.7 and 8.0 are not supported: the installer refuses them.
 
 With multistore, every setting follows the shop context selected in the back office.
 
+## Delivery and retries
+
+Each purchase is sent from your server once, when the order is paid (or placed with a cash on
+delivery module). If AxiTrace cannot be reached, the purchase waits in a queue on your shop and is
+sent again after 5 minutes, then with doubling waits up to 6 hours, for at most 10 attempts. No
+system cron is needed: due retries run at the end of ordinary back-office requests (and storefront
+requests on PHP-FPM). The configuration page also shows an optional **Cron URL** to call every 5 to
+15 minutes on a quiet shop.
+
 ## Development
 
 ```bash

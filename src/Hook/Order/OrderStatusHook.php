@@ -26,6 +26,7 @@ use Axitrace\PrestaShop\Purchase\PurchaseEligibility;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
+use Axitrace\PrestaShop\Retry\FailedEventQueue;
 use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
 use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
 
@@ -37,7 +38,9 @@ use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
  * through OrderHistory. So every call goes: row (created here when actionValidateOrder missed the
  * order) -> enabled with a public key for the ORDER's shop -> eligibility -> customer group
  * exclusion and server consent (mode "all", fail-closed): both void the order -> atomic claim ->
- * normalize -> send synchronously (A21, 1 s / 2 s timeouts) -> SENT on 2xx.
+ * normalize -> send synchronously (A21, 1 s / 2 s timeouts) -> SENT on 2xx. An undelivered
+ * purchase keeps its claim and goes to the retry queue with the same event id (a refused one is
+ * recorded there as dead, for the delivery log).
  *
  * Never throws: PrestaShop changes order states without a transaction. Every failure is logged
  * with class and message and recorded as the module's last failure.
@@ -55,6 +58,7 @@ final class OrderStatusHook
         private readonly ConsentGate $consentGate,
         private readonly OrderEventNormalizer $normalizer,
         private readonly PurchaseSender $sender,
+        private readonly FailedEventQueue $queue,
         private readonly FailureRecorder $failures,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
@@ -187,13 +191,20 @@ final class OrderStatusHook
     }
 
     /**
-     * The claim is kept: the order is never sent twice by a later status change.
+     * The claim is kept: a later status change never sends the order again; the queue does.
      *
      * @param array<string, mixed> $payload
      */
     private function undelivered(PurchaseOrder $order, array $payload, DeliveryResult $result, ShopScope $scope): void
     {
-        $this->logger->error(sprintf('the purchase of order %d was not delivered (%s, %s).', $order->idOrder, $result->outcome->value, $result->error));
+        $eventId = is_string($payload['eventSalt'] ?? null) ? $payload['eventSalt'] : '';
+        if ($result->outcome->isFinalFailure()) {
+            $this->queue->addDead($eventId, FailedEventQueue::ENDPOINT_PIXEL, $order->idShop, $payload, $result->error, $this->clock->now());
+
+            return;
+        }
+
+        $this->queue->enqueue($eventId, FailedEventQueue::ENDPOINT_PIXEL, $order->idShop, $payload, $result->error, $this->clock->now());
     }
 
     /**

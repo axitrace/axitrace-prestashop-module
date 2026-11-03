@@ -19,8 +19,16 @@ final class InMemoryModuleDb implements DbGatewayInterface
     /** @var array<int, array<string, mixed>> keyed by id_order */
     public array $orders = [];
 
+    /** @var array<int, array<string, mixed>> keyed by id */
+    public array $failedEvents = [];
+
     /** @var list<string> */
     public array $executed = [];
+
+    /** Configuration table behind the lock statements on `ps_configuration`. */
+    public ?InMemoryConfigurationStore $configuration = null;
+
+    private int $nextFailedEventId = 1;
 
     public function prefix(): string
     {
@@ -50,6 +58,13 @@ final class InMemoryModuleDb implements DbGatewayInterface
             return;
         }
 
+        if (preg_match('/^INSERT INTO `ps_axitrace_failed_event` \(([^)]*)\) VALUES \((.*)\)$/s', $sql, $m) === 1) {
+            $row = ['id' => (string) $this->nextFailedEventId] + $this->row($m[1], $m[2]);
+            $this->failedEvents[$this->nextFailedEventId++] = $row;
+
+            return;
+        }
+
         if (preg_match("/^DELETE FROM `ps_axitrace_cart_snapshot` WHERE `updated_at` < '([^']+)'$/", $sql, $m) === 1) {
             $this->cartSnapshots = array_filter($this->cartSnapshots, static fn (array $row): bool => $row['updated_at'] >= $m[1]);
 
@@ -65,6 +80,13 @@ final class InMemoryModuleDb implements DbGatewayInterface
     public function update(string $sql): int
     {
         $this->executed[] = $sql;
+
+        if (str_contains($sql, '`ps_axitrace_failed_event`')) {
+            return $this->updateFailedEvents($sql);
+        }
+        if (str_starts_with($sql, 'UPDATE `ps_configuration`')) {
+            return $this->updateConfiguration($sql);
+        }
 
         if (preg_match('/^UPDATE `ps_axitrace_order` SET (.*) WHERE `id_order` = (\d+)(?: AND `(\w+)` IS NULL)?$/s', $sql, $m) !== 1) {
             throw new \LogicException('Statement not supported by the fake: ' . $sql);
@@ -95,7 +117,98 @@ final class InMemoryModuleDb implements DbGatewayInterface
             return isset($this->orders[(int) $m[1]]) ? [$this->orders[(int) $m[1]]] : [];
         }
 
+        if (preg_match("/^SELECT \\* FROM `ps_axitrace_failed_event` WHERE `status` = '(\\w+)' AND `next_attempt_at` <= '([^']+)' ORDER BY `next_attempt_at`, `id` LIMIT (\\d+)$/", $sql, $m) === 1) {
+            $rows = array_filter($this->failedEvents, static fn (array $r): bool => $r['status'] === $m[1] && $r['next_attempt_at'] <= $m[2]);
+            uasort($rows, static fn (array $a, array $b): int => [$a['next_attempt_at'], (int) $a['id']] <=> [$b['next_attempt_at'], (int) $b['id']]);
+
+            return array_slice(array_values($rows), 0, (int) $m[3]);
+        }
+        if (preg_match("/^SELECT MIN\\(`next_attempt_at`\\) AS `due` FROM `ps_axitrace_failed_event` WHERE `status` = '(\\w+)'$/", $sql, $m) === 1) {
+            $dues = array_column(array_filter($this->failedEvents, static fn (array $r): bool => $r['status'] === $m[1]), 'next_attempt_at');
+
+            return [['due' => $dues === [] ? null : min($dues)]];
+        }
+        if (preg_match("/^SELECT `id` FROM `ps_axitrace_failed_event` WHERE `event_id` = '([^']*)' AND `endpoint` = '(\\w+)' AND `status` = '(\\w+)' LIMIT 1$/", $sql, $m) === 1) {
+            foreach ($this->failedEvents as $row) {
+                if ($row['event_id'] === $m[1] && $row['endpoint'] === $m[2] && $row['status'] === $m[3]) {
+                    return [['id' => $row['id']]];
+                }
+            }
+
+            return [];
+        }
+
         throw new \LogicException('Query not supported by the fake: ' . $sql);
+    }
+
+    private function updateFailedEvents(string $sql): int
+    {
+        if (preg_match('/^DELETE FROM `ps_axitrace_failed_event` WHERE `id` = (\d+)$/', $sql, $m) === 1) {
+            $found = isset($this->failedEvents[(int) $m[1]]);
+            unset($this->failedEvents[(int) $m[1]]);
+
+            return $found ? 1 : 0;
+        }
+        if (preg_match("/^DELETE FROM `ps_axitrace_failed_event` WHERE `status` = '(\\w+)' AND `next_attempt_at` < '([^']+)'$/", $sql, $m) === 1) {
+            $before = count($this->failedEvents);
+            $this->failedEvents = array_filter($this->failedEvents, static fn (array $r): bool => !($r['status'] === $m[1] && $r['next_attempt_at'] < $m[2]));
+
+            return $before - count($this->failedEvents);
+        }
+        if (preg_match('/^UPDATE `ps_axitrace_failed_event` SET (.*) WHERE `id` = (\d+)$/s', $sql, $m) === 1) {
+            $id = (int) $m[2];
+            if (!isset($this->failedEvents[$id])) {
+                return 0;
+            }
+            foreach ($this->assignments($m[1]) as $column => $value) {
+                $this->failedEvents[$id][$column] = $value;
+            }
+
+            return 1;
+        }
+
+        throw new \LogicException('Statement not supported by the fake: ' . $sql);
+    }
+
+    private function updateConfiguration(string $sql): int
+    {
+        if ($this->configuration === null
+            || preg_match("/^UPDATE `ps_configuration` SET `value` = '(\\d+)' WHERE `name` = '(\\w+)' AND `id_shop` IS NULL AND `id_shop_group` IS NULL(?: AND \\(`value` IS NULL OR CAST\\(`value` AS UNSIGNED\\) < (-?\\d+)\\))?$/", $sql, $m) !== 1) {
+            throw new \LogicException('Statement not supported by the fake: ' . $sql);
+        }
+
+        $key = '0:0:' . $m[2];
+        if (!array_key_exists($key, $this->configuration->values)) {
+            return 0;
+        }
+        $current = $this->configuration->values[$key];
+        if (isset($m[3]) && (int) $current >= (int) $m[3]) {
+            return 0;
+        }
+        if ($current === $m[1]) {
+            return 0; // MySQL reports changed rows only.
+        }
+        $this->configuration->values[$key] = $m[1];
+
+        return 1;
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private function assignments(string $set): array
+    {
+        preg_match_all("/`(\\w+)` = (?:'((?:[^'\\\\]|\\\\.)*)'|(NULL)|(-?\\d+))/", $set, $matches, \PREG_SET_ORDER | \PREG_UNMATCHED_AS_NULL);
+        $values = [];
+        foreach ($matches as $match) {
+            $values[(string) $match[1]] = match (true) {
+                ($match[3] ?? null) === 'NULL' => null,
+                ($match[4] ?? null) !== null => (string) $match[4],
+                default => stripslashes((string) $match[2]),
+            };
+        }
+
+        return $values;
     }
 
     public function escape(string $value): string

@@ -1,0 +1,237 @@
+{
+    "command": "status 10 PS_OS_PREPARATION via history",
+    "ps_version": "9.2.0",
+    "php_version": "8.5.12",
+    "result": {
+        "new_state_id": 3,
+        "facts": {
+            "order": [
+                {
+                    "id_order": 10,
+                    "reference": "NZWZVDWWB",
+                    "id_cart": 10,
+                    "id_shop": 1,
+                    "id_shop_group": 1,
+                    "id_currency": 1,
+                    "conversion_rate": "1.000000",
+                    "module": "ps_cashondelivery",
+                    "payment": "Cash on delivery (COD)",
+                    "current_state": 3,
+                    "valid": 1,
+                    "total_paid_tax_incl": "57.140000",
+                    "total_paid_tax_excl": "57.140000",
+                    "total_products": "50.140000",
+                    "total_products_wt": "50.140000",
+                    "total_shipping_tax_incl": "7.000000",
+                    "total_shipping_tax_excl": "7.000000",
+                    "total_discounts_tax_incl": "0.000000",
+                    "id_carrier": 2,
+                    "date_add": "2026-11-03 22:41:38"
+                }
+            ],
+            "order_detail": [
+                {
+                    "id_order_detail": 16,
+                    "product_id": 1,
+                    "product_attribute_id": 1,
+                    "product_reference": "demo_1",
+                    "product_quantity": 2,
+                    "product_quantity_refunded": 0,
+                    "product_quantity_return": 0,
+                    "product_quantity_reinjected": 0,
+                    "unit_price_tax_incl": "19.120000",
+                    "unit_price_tax_excl": "19.120000",
+                    "total_price_tax_incl": "38.240000",
+                    "total_price_tax_excl": "38.240000",
+                    "purchase_supplier_price": "5.490000",
+                    "original_wholesale_price": "7.500000",
+                    "original_product_price": "23.900000",
+                    "total_refunded_tax_incl": "0.000000",
+                    "total_refunded_tax_excl": "0.000000"
+                },
+                {
+                    "id_order_detail": 17,
+                    "product_id": 6,
+                    "product_attribute_id": 0,
+                    "product_reference": "demo_11",
+                    "product_quantity": 1,
+                    "product_quantity_refunded": 0,
+                    "product_quantity_return": 0,
+                    "product_quantity_reinjected": 0,
+                    "unit_price_tax_incl": "11.900000",
+                    "unit_price_tax_excl": "11.900000",
+                    "total_price_tax_incl": "11.900000",
+                    "total_price_tax_excl": "11.900000",
+                    "purchase_supplier_price": "10.000000",
+                    "original_wholesale_price": "10.000000",
+                    "original_product_price": "11.900000",
+                    "total_refunded_tax_incl": "0.000000",
+                    "total_refunded_tax_excl": "0.000000"
+                }
+            ],
+            "order_history": [
+                {
+                    "id_order_history": 14,
+                    "id_order_state": 13,
+                    "date_add": "2026-11-03 22:41:38"
+                },
+                {
+                    "id_order_history": 15,
+                    "id_order_state": 3,
+                    "date_add": "2026-11-03 22:41:39"
+                },
+                {
+                    "id_order_history": 16,
+                    "id_order_state": 3,
+                    "date_add": "2026-11-03 22:41:39"
+                }
+            ],
+            "order_slip": [],
+            "order_slip_detail": [],
+            "order_carrier": [
+                {
+                    "id_order_carrier": 10,
+                    "id_carrier": 2,
+                    "shipping_cost_tax_incl": "7.000000",
+                    "shipping_cost_tax_excl": "7.000000"
+                }
+            ],
+            "currency": [
+                {
+                    "id_currency": 1,
+                    "iso_code": "EUR",
+                    "conversion_rate": "1.000000"
+                }
+            ]
+        }
+    },
+    "error": null,
+    "hooks": [
+        {
+            "seq": 1,
+            "pid": 277,
+            "ts": 1793742099.397602,
+            "hook": "actionOrderStatusUpdate",
+            "ps_version": "9.2.0",
+            "php_self": null,
+            "controller_class": null,
+            "request_uri": "/var/www/html/axitraceprobe-capture.php?status",
+            "sapi": "cli",
+            "params": {
+                "newOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 3,
+                    "id": 3,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Processing in progress",
+                    "template": "preparation",
+                    "send_email": "1",
+                    "module_name": "",
+                    "invoice": "1",
+                    "color": "#3498D8",
+                    "unremovable": "1",
+                    "logable": "1",
+                    "delivery": "1",
+                    "hidden": "0",
+                    "shipped": "0",
+                    "paid": "1",
+                    "pdf_invoice": "0",
+                    "pdf_delivery": "0",
+                    "deleted": "0"
+                },
+                "oldOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 3,
+                    "id": 3,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Processing in progress",
+                    "template": "preparation",
+                    "send_email": 1,
+                    "module_name": "",
+                    "invoice": 1,
+                    "color": "#3498D8",
+                    "unremovable": 1,
+                    "logable": 1,
+                    "delivery": 1,
+                    "hidden": 0,
+                    "shipped": 0,
+                    "paid": 1,
+                    "pdf_invoice": 0,
+                    "pdf_delivery": 0,
+                    "deleted": 0
+                },
+                "id_order": 10,
+                "cookie": {
+                    "__class": "Cookie"
+                },
+                "cart": null,
+                "altern": 1
+            }
+        },
+        {
+            "seq": 2,
+            "pid": 277,
+            "ts": 1793742099.559027,
+            "hook": "actionOrderStatusPostUpdate",
+            "ps_version": "9.2.0",
+            "php_self": null,
+            "controller_class": null,
+            "request_uri": "/var/www/html/axitraceprobe-capture.php?status",
+            "sapi": "cli",
+            "params": {
+                "newOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 3,
+                    "id": 3,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Processing in progress",
+                    "template": "preparation",
+                    "send_email": "1",
+                    "module_name": "",
+                    "invoice": "1",
+                    "color": "#3498D8",
+                    "unremovable": "1",
+                    "logable": "1",
+                    "delivery": "1",
+                    "hidden": "0",
+                    "shipped": "0",
+                    "paid": "1",
+                    "pdf_invoice": "0",
+                    "pdf_delivery": "0",
+                    "deleted": "0"
+                },
+                "oldOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 3,
+                    "id": 3,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Processing in progress",
+                    "template": "preparation",
+                    "send_email": 1,
+                    "module_name": "",
+                    "invoice": 1,
+                    "color": "#3498D8",
+                    "unremovable": 1,
+                    "logable": 1,
+                    "delivery": 1,
+                    "hidden": 0,
+                    "shipped": 0,
+                    "paid": 1,
+                    "pdf_invoice": 0,
+                    "pdf_delivery": 0,
+                    "deleted": 0
+                },
+                "id_order": 10,
+                "cookie": {
+                    "__class": "Cookie"
+                },
+                "cart": null,
+                "altern": 5
+            }
+        }
+    ]
+}

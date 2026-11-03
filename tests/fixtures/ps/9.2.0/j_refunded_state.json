@@ -1,0 +1,267 @@
+{
+    "command": "status 8 PS_OS_REFUND via bus",
+    "ps_version": "9.2.0",
+    "php_version": "8.5.12",
+    "result": {
+        "new_state_id": 7,
+        "facts": {
+            "order": [
+                {
+                    "id_order": 8,
+                    "reference": "WDMUGRKDG",
+                    "id_cart": 8,
+                    "id_shop": 1,
+                    "id_shop_group": 1,
+                    "id_currency": 1,
+                    "conversion_rate": "1.000000",
+                    "module": "ps_wirepayment",
+                    "payment": "Bank transfer",
+                    "current_state": 7,
+                    "valid": 0,
+                    "total_paid_tax_incl": "57.140000",
+                    "total_paid_tax_excl": "57.140000",
+                    "total_products": "50.140000",
+                    "total_products_wt": "50.140000",
+                    "total_shipping_tax_incl": "7.000000",
+                    "total_shipping_tax_excl": "7.000000",
+                    "total_discounts_tax_incl": "0.000000",
+                    "id_carrier": 2,
+                    "date_add": "2026-11-03 22:41:36"
+                }
+            ],
+            "order_detail": [
+                {
+                    "id_order_detail": 12,
+                    "product_id": 1,
+                    "product_attribute_id": 1,
+                    "product_reference": "demo_1",
+                    "product_quantity": 2,
+                    "product_quantity_refunded": 1,
+                    "product_quantity_return": 0,
+                    "product_quantity_reinjected": 1,
+                    "unit_price_tax_incl": "19.120000",
+                    "unit_price_tax_excl": "19.120000",
+                    "total_price_tax_incl": "38.240000",
+                    "total_price_tax_excl": "38.240000",
+                    "purchase_supplier_price": "5.490000",
+                    "original_wholesale_price": "7.500000",
+                    "original_product_price": "23.900000",
+                    "total_refunded_tax_incl": "19.120000",
+                    "total_refunded_tax_excl": "19.120000"
+                },
+                {
+                    "id_order_detail": 13,
+                    "product_id": 6,
+                    "product_attribute_id": 0,
+                    "product_reference": "demo_11",
+                    "product_quantity": 1,
+                    "product_quantity_refunded": 0,
+                    "product_quantity_return": 0,
+                    "product_quantity_reinjected": 0,
+                    "unit_price_tax_incl": "11.900000",
+                    "unit_price_tax_excl": "11.900000",
+                    "total_price_tax_incl": "11.900000",
+                    "total_price_tax_excl": "11.900000",
+                    "purchase_supplier_price": "10.000000",
+                    "original_wholesale_price": "10.000000",
+                    "original_product_price": "11.900000",
+                    "total_refunded_tax_incl": "0.000000",
+                    "total_refunded_tax_excl": "0.000000"
+                }
+            ],
+            "order_history": [
+                {
+                    "id_order_history": 11,
+                    "id_order_state": 10,
+                    "date_add": "2026-11-03 22:41:36"
+                },
+                {
+                    "id_order_history": 12,
+                    "id_order_state": 2,
+                    "date_add": "2026-11-03 22:41:36"
+                },
+                {
+                    "id_order_history": 23,
+                    "id_order_state": 7,
+                    "date_add": "2026-11-03 22:41:43"
+                }
+            ],
+            "order_slip": [
+                {
+                    "id_order_slip": 2,
+                    "conversion_rate": "1.000000",
+                    "id_customer": 3,
+                    "id_order": 8,
+                    "total_products_tax_excl": "19.120000",
+                    "total_products_tax_incl": "19.120000",
+                    "total_shipping_tax_excl": "0.000000",
+                    "total_shipping_tax_incl": "0.000000",
+                    "shipping_cost": 0,
+                    "amount": "19.120000",
+                    "shipping_cost_amount": "0.000000",
+                    "partial": 0,
+                    "order_slip_type": 0,
+                    "date_add": "2026-11-03 22:41:37",
+                    "date_upd": "2026-11-03 22:41:37"
+                }
+            ],
+            "order_slip_detail": [
+                {
+                    "id_order_slip": 2,
+                    "id_order_detail": 12,
+                    "product_quantity": 1,
+                    "unit_price_tax_excl": "19.120000",
+                    "unit_price_tax_incl": "19.120000",
+                    "total_price_tax_excl": "19.120000",
+                    "total_price_tax_incl": "19.120000",
+                    "amount_tax_excl": "19.120000",
+                    "amount_tax_incl": "19.120000"
+                }
+            ],
+            "order_carrier": [
+                {
+                    "id_order_carrier": 8,
+                    "id_carrier": 2,
+                    "shipping_cost_tax_incl": "7.000000",
+                    "shipping_cost_tax_excl": "7.000000"
+                }
+            ],
+            "currency": [
+                {
+                    "id_currency": 1,
+                    "iso_code": "EUR",
+                    "conversion_rate": "1.000000"
+                }
+            ]
+        }
+    },
+    "error": null,
+    "hooks": [
+        {
+            "seq": 1,
+            "pid": 326,
+            "ts": 1793742103.407841,
+            "hook": "actionOrderStatusUpdate",
+            "ps_version": "9.2.0",
+            "php_self": null,
+            "controller_class": null,
+            "request_uri": "/var/www/html/axitraceprobe-capture.php?status",
+            "sapi": "cli",
+            "params": {
+                "newOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 7,
+                    "id": 7,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Refunded",
+                    "template": "refund",
+                    "send_email": "1",
+                    "module_name": "",
+                    "invoice": "1",
+                    "color": "#01B887",
+                    "unremovable": "1",
+                    "logable": "0",
+                    "delivery": "0",
+                    "hidden": "0",
+                    "shipped": "0",
+                    "paid": "0",
+                    "pdf_invoice": "0",
+                    "pdf_delivery": "0",
+                    "deleted": "0"
+                },
+                "oldOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 2,
+                    "id": 2,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Payment accepted",
+                    "template": "payment",
+                    "send_email": "1",
+                    "module_name": "",
+                    "invoice": "1",
+                    "color": "#3498D8",
+                    "unremovable": "1",
+                    "logable": "1",
+                    "delivery": "0",
+                    "hidden": "0",
+                    "shipped": "0",
+                    "paid": "1",
+                    "pdf_invoice": "1",
+                    "pdf_delivery": "0",
+                    "deleted": "0"
+                },
+                "id_order": 8,
+                "cookie": {
+                    "__class": "Cookie"
+                },
+                "cart": null,
+                "altern": 1
+            }
+        },
+        {
+            "seq": 2,
+            "pid": 326,
+            "ts": 1793742103.550426,
+            "hook": "actionOrderStatusPostUpdate",
+            "ps_version": "9.2.0",
+            "php_self": null,
+            "controller_class": null,
+            "request_uri": "/var/www/html/axitraceprobe-capture.php?status",
+            "sapi": "cli",
+            "params": {
+                "newOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 7,
+                    "id": 7,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Refunded",
+                    "template": "refund",
+                    "send_email": "1",
+                    "module_name": "",
+                    "invoice": "1",
+                    "color": "#01B887",
+                    "unremovable": "1",
+                    "logable": "0",
+                    "delivery": "0",
+                    "hidden": "0",
+                    "shipped": "0",
+                    "paid": "0",
+                    "pdf_invoice": "0",
+                    "pdf_delivery": "0",
+                    "deleted": "0"
+                },
+                "oldOrderStatus": {
+                    "__class": "OrderState",
+                    "__id": 2,
+                    "id": 2,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "name": "Payment accepted",
+                    "template": "payment",
+                    "send_email": "1",
+                    "module_name": "",
+                    "invoice": "1",
+                    "color": "#3498D8",
+                    "unremovable": "1",
+                    "logable": "1",
+                    "delivery": "0",
+                    "hidden": "0",
+                    "shipped": "0",
+                    "paid": "1",
+                    "pdf_invoice": "1",
+                    "pdf_delivery": "0",
+                    "deleted": "0"
+                },
+                "id_order": 8,
+                "cookie": {
+                    "__class": "Cookie"
+                },
+                "cart": null,
+                "altern": 5
+            }
+        }
+    ]
+}

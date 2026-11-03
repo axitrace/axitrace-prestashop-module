@@ -1,0 +1,377 @@
+{
+    "tag": "9.2.0",
+    "pages": {
+        "product_combo": {
+            "bytes": 126609,
+            "probe_markers": [
+                "displayFooterProduct",
+                "displayHeader"
+            ],
+            "body_id": "product",
+            "prestashop_page_name": "product",
+            "add_to_cart_button": [
+                "<button\n            class=\"product__add-to-cart-button btn btn-primary\"\n            data-button-action=\"add-to-cart\"\n            type=\"submit\"\n                        data-ps-ref=\"add-to-cart\"\n            aria-label=\"Add to cart Hummingbird printed t-shirt\"\n            title=\"Add to cart Hummingbird printed t-shirt\"\n          >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Mug The best is yet to come\"\n                    title=\"Add to cart Mug The best is yet to come\"\n                    data-ps-ref=\"add-to-cart\"\n                  >"
+            ],
+            "add_to_cart_form": [
+                "<form action=\"http://localhost:8192/cart\" method=\"post\" id=\"add-to-cart-or-refresh\">"
+            ],
+            "id_product_inputs": [
+                "<input type=\"hidden\" name=\"id_customization\" value=\"0\" id=\"product_customization_id\" class=\"js-product-customization-id\">",
+                "<input type=\"hidden\" name=\"id_product\" value=\"1\" id=\"product_page_product_id\">",
+                "<input type=\"hidden\" value=\"6\" name=\"id_product\">"
+            ],
+            "data_id_product_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product=\"6\""
+            ],
+            "group_selects": [
+                "<input \n                      class=\"input-color__input\"\n                      type=\"radio\"\n                      id=\"input_2_11_1\"\n                      data-product-attribute=\"2\"\n                      name=\"group[2]\"\n                      value=\"11\"\n                      aria-labelledby=\"label_2_11_1\"\n                                          >",
+                "<input \n                      class=\"input-color__input\"\n                      type=\"radio\"\n                      id=\"input_2_8_1\"\n                      data-product-attribute=\"2\"\n                      name=\"group[2]\"\n                      value=\"8\"\n                      aria-labelledby=\"label_2_8_1\"\n                       checked=\"checked\" aria-checked=\"true\"                    >",
+                "<select\n                class=\"form-select\"\n                id=\"input_1_1\"\n                aria-labelledby=\"legend_1_1\"\n                data-product-attribute=\"1\"\n                name=\"group[1]\">"
+            ],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product=\"6\""
+            ]
+        },
+        "product_simple": {
+            "bytes": 153945,
+            "probe_markers": [
+                "displayFooterProduct",
+                "displayHeader"
+            ],
+            "body_id": "product",
+            "prestashop_page_name": "product",
+            "add_to_cart_button": [
+                "<button\n            class=\"product__add-to-cart-button btn btn-primary\"\n            data-button-action=\"add-to-cart\"\n            type=\"submit\"\n                        data-ps-ref=\"add-to-cart\"\n            aria-label=\"Add to cart Mug The best is yet to come\"\n            title=\"Add to cart Mug The best is yet to come\"\n          >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Hummingbird printed t-shirt\"\n                    title=\"Add to cart Hummingbird printed t-shirt\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Mountain fox cushion\"\n                    title=\"Add to cart Mountain fox cushion\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Mug The adventure begins\"\n                    title=\"Add to cart Mug The adventure begins\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Mug Today is a good day\"\n                    title=\"Add to cart Mug Today is a good day\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Pack Mug + Framed poster\"\n                    title=\"Add to cart Pack Mug + Framed poster\"\n                    data-ps-ref=\"add-to-cart\"\n                  >"
+            ],
+            "add_to_cart_form": [
+                "<form action=\"http://localhost:8192/cart\" method=\"post\" id=\"add-to-cart-or-refresh\">"
+            ],
+            "id_product_inputs": [
+                "<input type=\"hidden\" name=\"id_customization\" value=\"0\" id=\"product_customization_id\" class=\"js-product-customization-id\">",
+                "<input type=\"hidden\" name=\"id_product\" value=\"6\" id=\"product_page_product_id\">",
+                "<input type=\"hidden\" value=\"1\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"1\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"15\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"22\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"7\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"8\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"9\" name=\"id_product\">"
+            ],
+            "data_id_product_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"22\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"15\"",
+                "data-id-product=\"7\"",
+                "data-id-product=\"8\"",
+                "data-id-product=\"9\""
+            ],
+            "group_selects": [],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"22\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"15\"",
+                "data-id-product=\"7\"",
+                "data-id-product=\"8\"",
+                "data-id-product=\"9\""
+            ]
+        },
+        "cart": {
+            "bytes": 104061,
+            "probe_markers": [
+                "displayHeader"
+            ],
+            "body_id": "cart",
+            "prestashop_page_name": "cart",
+            "add_to_cart_button": [
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Hummingbird printed sweater\"\n                    title=\"Add to cart Hummingbird printed sweater\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Hummingbird printed t-shirt\"\n                    title=\"Add to cart Hummingbird printed t-shirt\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart The adventure begins Framed poster\"\n                    title=\"Add to cart The adventure begins Framed poster\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart The best is yet to come' Framed poster\"\n                    title=\"Add to cart The best is yet to come' Framed poster\"\n                    data-ps-ref=\"add-to-cart\"\n                  >"
+            ],
+            "add_to_cart_form": [],
+            "id_product_inputs": [
+                "<input type=\"hidden\" value=\"1\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"1\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"13\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"16\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"2\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"3\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"4\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"9\" name=\"id_product_attribute\">"
+            ],
+            "data_id_product_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"13\"",
+                "data-id-product-attribute=\"16\"",
+                "data-id-product-attribute=\"9\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"2\"",
+                "data-id-product=\"3\"",
+                "data-id-product=\"4\"",
+                "data-id-product=\"6\""
+            ],
+            "group_selects": [],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-id-customization=\"\"",
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"13\"",
+                "data-id-product-attribute=\"16\"",
+                "data-id-product-attribute=\"9\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"2\"",
+                "data-id-product=\"3\"",
+                "data-id-product=\"4\"",
+                "data-id-product=\"6\"",
+                "data-link-action=\"delete-from-cart\"",
+                "data-product-id=\"6\""
+            ]
+        },
+        "checkout": {
+            "bytes": 84424,
+            "probe_markers": [
+                "displayHeader"
+            ],
+            "body_id": "checkout",
+            "prestashop_page_name": "checkout",
+            "add_to_cart_button": [],
+            "add_to_cart_form": [],
+            "id_product_inputs": [],
+            "data_id_product_attrs": [],
+            "group_selects": [],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-link-action=\"delete-address\"",
+                "data-link-action=\"different-invoice-address\"",
+                "data-link-action=\"edit-address\""
+            ]
+        },
+        "confirmation": {
+            "bytes": 103397,
+            "probe_markers": [
+                "displayHeader",
+                "displayOrderConfirmation"
+            ],
+            "body_id": "order-confirmation",
+            "prestashop_page_name": "order-confirmation",
+            "add_to_cart_button": [
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Hummingbird printed sweater\"\n                    title=\"Add to cart Hummingbird printed sweater\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart Hummingbird printed t-shirt\"\n                    title=\"Add to cart Hummingbird printed t-shirt\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart The adventure begins Framed poster\"\n                    title=\"Add to cart The adventure begins Framed poster\"\n                    data-ps-ref=\"add-to-cart\"\n                  >",
+                "<button \n                    data-button-action=\"add-to-cart\" \n                    class=\"product-miniature__add btn btn-primary btn-square-icon\"\n                    aria-label=\"Add to cart The best is yet to come' Framed poster\"\n                    title=\"Add to cart The best is yet to come' Framed poster\"\n                    data-ps-ref=\"add-to-cart\"\n                  >"
+            ],
+            "add_to_cart_form": [],
+            "id_product_inputs": [
+                "<input type=\"hidden\" value=\"1\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"1\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"13\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"16\" name=\"id_product_attribute\">",
+                "<input type=\"hidden\" value=\"2\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"3\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"4\" name=\"id_product\">",
+                "<input type=\"hidden\" value=\"9\" name=\"id_product_attribute\">"
+            ],
+            "data_id_product_attrs": [
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"13\"",
+                "data-id-product-attribute=\"16\"",
+                "data-id-product-attribute=\"9\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"2\"",
+                "data-id-product=\"3\"",
+                "data-id-product=\"4\""
+            ],
+            "group_selects": [],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"13\"",
+                "data-id-product-attribute=\"16\"",
+                "data-id-product-attribute=\"9\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"2\"",
+                "data-id-product=\"3\"",
+                "data-id-product=\"4\""
+            ]
+        }
+    },
+    "hooks_by_request": [
+        {
+            "seq": 1,
+            "pid": 102,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/1-1-hummingbird-printed-t-shirt.html"
+        },
+        {
+            "seq": 2,
+            "pid": 102,
+            "hook": "displayHeader",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/1-1-hummingbird-printed-t-shirt.html"
+        },
+        {
+            "seq": 3,
+            "pid": 102,
+            "hook": "displayFooterProduct",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/1-1-hummingbird-printed-t-shirt.html"
+        },
+        {
+            "seq": 1,
+            "pid": 26,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/6-mug-the-best-is-yet-to-come.html"
+        },
+        {
+            "seq": 2,
+            "pid": 26,
+            "hook": "displayHeader",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/6-mug-the-best-is-yet-to-come.html"
+        },
+        {
+            "seq": 3,
+            "pid": 26,
+            "hook": "displayFooterProduct",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/6-mug-the-best-is-yet-to-come.html"
+        },
+        {
+            "seq": 1,
+            "pid": 24,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "authentication",
+            "controller_class": "AuthController",
+            "request_uri": "/login"
+        },
+        {
+            "seq": 2,
+            "pid": 24,
+            "hook": "displayHeader",
+            "php_self": "authentication",
+            "controller_class": "AuthController",
+            "request_uri": "/login"
+        },
+        {
+            "seq": 1,
+            "pid": 27,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "index",
+            "controller_class": "IndexController",
+            "request_uri": "/"
+        },
+        {
+            "seq": 2,
+            "pid": 27,
+            "hook": "displayHeader",
+            "php_self": "index",
+            "controller_class": "IndexController",
+            "request_uri": "/"
+        },
+        {
+            "seq": 1,
+            "pid": 28,
+            "hook": "displayHeader",
+            "php_self": "cart",
+            "controller_class": "CartController",
+            "request_uri": "/index.php?controller=cart"
+        },
+        {
+            "seq": 1,
+            "pid": 102,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "cart",
+            "controller_class": "CartController",
+            "request_uri": "/cart?action=show"
+        },
+        {
+            "seq": 2,
+            "pid": 102,
+            "hook": "displayHeader",
+            "php_self": "cart",
+            "controller_class": "CartController",
+            "request_uri": "/cart?action=show"
+        },
+        {
+            "seq": 1,
+            "pid": 25,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "order",
+            "controller_class": "OrderController",
+            "request_uri": "/order"
+        },
+        {
+            "seq": 2,
+            "pid": 25,
+            "hook": "displayHeader",
+            "php_self": "order",
+            "controller_class": "OrderController",
+            "request_uri": "/order"
+        },
+        {
+            "seq": 1,
+            "pid": 26,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "order-confirmation",
+            "controller_class": "OrderConfirmationController",
+            "request_uri": "/order-confirmation?id_cart=7&id_module=5&id_order=7&key=8385b44b55c37a93898cf9b6091bfe65"
+        },
+        {
+            "seq": 2,
+            "pid": 26,
+            "hook": "displayHeader",
+            "php_self": "order-confirmation",
+            "controller_class": "OrderConfirmationController",
+            "request_uri": "/order-confirmation?id_cart=7&id_module=5&id_order=7&key=8385b44b55c37a93898cf9b6091bfe65"
+        },
+        {
+            "seq": 3,
+            "pid": 26,
+            "hook": "displayOrderConfirmation",
+            "php_self": "order-confirmation",
+            "controller_class": "OrderConfirmationController",
+            "request_uri": "/order-confirmation?id_cart=7&id_module=5&id_order=7&key=8385b44b55c37a93898cf9b6091bfe65"
+        }
+    ],
+    "add_to_cart_response_keys": [
+        "cart",
+        "errors",
+        "id_customization",
+        "id_product",
+        "id_product_attribute",
+        "quantity",
+        "success"
+    ],
+    "add_to_cart_response_scalars": {
+        "success": true,
+        "id_product": 6,
+        "id_product_attribute": 0,
+        "id_customization": 0,
+        "quantity": 1,
+        "errors": ""
+    }
+}

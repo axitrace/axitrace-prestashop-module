@@ -1,0 +1,157 @@
+{
+    "command": "cancel_line 9",
+    "ps_version": "9.2.0",
+    "php_version": "8.5.12",
+    "result": {
+        "command_class": "PrestaShop\\PrestaShop\\Core\\Domain\\Order\\Command\\CancelOrderProductCommand",
+        "facts": {
+            "order": [
+                {
+                    "id_order": 9,
+                    "reference": "QHQXPWIWM",
+                    "id_cart": 9,
+                    "id_shop": 1,
+                    "id_shop_group": 1,
+                    "id_currency": 1,
+                    "conversion_rate": "1.000000",
+                    "module": "ps_wirepayment",
+                    "payment": "Bank transfer",
+                    "current_state": 10,
+                    "valid": 0,
+                    "total_paid_tax_incl": "45.240000",
+                    "total_paid_tax_excl": "45.240000",
+                    "total_products": "38.240000",
+                    "total_products_wt": "38.240000",
+                    "total_shipping_tax_incl": "7.000000",
+                    "total_shipping_tax_excl": "7.000000",
+                    "total_discounts_tax_incl": "0.000000",
+                    "id_carrier": 2,
+                    "date_add": "2026-11-03 22:41:37"
+                }
+            ],
+            "order_detail": [
+                {
+                    "id_order_detail": 14,
+                    "product_id": 1,
+                    "product_attribute_id": 1,
+                    "product_reference": "demo_1",
+                    "product_quantity": 2,
+                    "product_quantity_refunded": 0,
+                    "product_quantity_return": 0,
+                    "product_quantity_reinjected": 0,
+                    "unit_price_tax_incl": "19.120000",
+                    "unit_price_tax_excl": "19.120000",
+                    "total_price_tax_incl": "38.240000",
+                    "total_price_tax_excl": "38.240000",
+                    "purchase_supplier_price": "5.490000",
+                    "original_wholesale_price": "7.500000",
+                    "original_product_price": "23.900000",
+                    "total_refunded_tax_incl": "0.000000",
+                    "total_refunded_tax_excl": "0.000000"
+                }
+            ],
+            "order_history": [
+                {
+                    "id_order_history": 13,
+                    "id_order_state": 10,
+                    "date_add": "2026-11-03 22:41:37"
+                }
+            ],
+            "order_slip": [],
+            "order_slip_detail": [],
+            "order_carrier": [
+                {
+                    "id_order_carrier": 9,
+                    "id_carrier": 2,
+                    "shipping_cost_tax_incl": "7.000000",
+                    "shipping_cost_tax_excl": "7.000000"
+                }
+            ],
+            "currency": [
+                {
+                    "id_currency": 1,
+                    "iso_code": "EUR",
+                    "conversion_rate": "1.000000"
+                }
+            ]
+        }
+    },
+    "error": null,
+    "hooks": [
+        {
+            "seq": 1,
+            "pid": 250,
+            "ts": 1793742098.240673,
+            "hook": "actionProductCancel",
+            "ps_version": "9.2.0",
+            "php_self": null,
+            "controller_class": null,
+            "request_uri": "/var/www/html/axitraceprobe-capture.php?cancel_line",
+            "sapi": "cli",
+            "params": {
+                "order": {
+                    "__class": "Order",
+                    "__id": 9,
+                    "id": 9,
+                    "id_lang": 1,
+                    "id_shop": 1,
+                    "id_shop_list": [],
+                    "force_id": false,
+                    "id_address_delivery": 7,
+                    "id_address_invoice": 7,
+                    "id_shop_group": 1,
+                    "id_cart": 9,
+                    "id_currency": 1,
+                    "id_customer": 3,
+                    "id_carrier": 2,
+                    "current_state": 10,
+                    "secure_key": "8385b44b55c37a93898cf9b6091bfe65",
+                    "payment": "Bank transfer",
+                    "module": "ps_wirepayment",
+                    "conversion_rate": "1.000000",
+                    "recyclable": "0",
+                    "gift": "0",
+                    "gift_message": "",
+                    "mobile_theme": "0",
+                    "total_discounts": 0,
+                    "total_discounts_tax_incl": 0,
+                    "total_discounts_tax_excl": 0,
+                    "total_paid": 45.24,
+                    "total_paid_tax_incl": 45.24,
+                    "total_paid_tax_excl": 45.24,
+                    "total_paid_real": "0.000000",
+                    "total_products": 38.24,
+                    "total_products_wt": 38.24,
+                    "total_shipping": 7,
+                    "total_shipping_tax_incl": 7,
+                    "total_shipping_tax_excl": 7,
+                    "carrier_tax_rate": 0,
+                    "total_wrapping": 0,
+                    "total_wrapping_tax_incl": 0,
+                    "total_wrapping_tax_excl": 0,
+                    "invoice_number": 0,
+                    "delivery_number": 0,
+                    "invoice_date": "0000-00-00 00:00:00",
+                    "delivery_date": "0000-00-00 00:00:00",
+                    "valid": "0",
+                    "date_add": "2026-11-03 22:41:37",
+                    "date_upd": "2026-11-03 22:41:38",
+                    "reference": "QHQXPWIWM",
+                    "round_mode": 2,
+                    "round_type": 2,
+                    "note": "",
+                    "product_list": [],
+                    "weight": "0.600 kg"
+                },
+                "id_order_detail": 15,
+                "cancel_quantity": 1,
+                "action": 0,
+                "cookie": {
+                    "__class": "Cookie"
+                },
+                "cart": null,
+                "altern": 2
+            }
+        }
+    ]
+}

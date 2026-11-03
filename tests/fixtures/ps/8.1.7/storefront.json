@@ -1,0 +1,339 @@
+{
+    "tag": "8.1.7",
+    "pages": {
+        "product_combo": {
+            "bytes": 98201,
+            "probe_markers": [
+                "displayFooterProduct",
+                "displayHeader"
+            ],
+            "body_id": "product",
+            "prestashop_page_name": "product",
+            "add_to_cart_button": [
+                "<button\n            class=\"btn btn-primary add-to-cart\"\n            data-button-action=\"add-to-cart\"\n            type=\"submit\"\n                      >"
+            ],
+            "add_to_cart_form": [
+                "<form action=\"http://localhost:8181/cart\" method=\"post\" id=\"add-to-cart-or-refresh\">"
+            ],
+            "id_product_inputs": [
+                "<input type=\"hidden\" name=\"id_customization\" value=\"0\" id=\"product_customization_id\" class=\"js-product-customization-id\">",
+                "<input type=\"hidden\" name=\"id_product\" value=\"1\" id=\"product_page_product_id\">"
+            ],
+            "data_id_product_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product=\"6\""
+            ],
+            "group_selects": [
+                "<input class=\"input-color\" type=\"radio\" data-product-attribute=\"2\" name=\"group[2]\" value=\"11\" title=\"Black\">",
+                "<input class=\"input-color\" type=\"radio\" data-product-attribute=\"2\" name=\"group[2]\" value=\"8\" title=\"White\" checked=\"checked\">",
+                "<select\n          class=\"form-control form-control-select\"\n          id=\"group_1\"\n          aria-label=\"Size\"\n          data-product-attribute=\"1\"\n          name=\"group[1]\">"
+            ],
+            "product_details_json": true,
+            "cart_line_data_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product=\"6\"",
+                "data-link-action=\"quickview\"",
+                "data-product-id=\"1\""
+            ]
+        },
+        "product_simple": {
+            "bytes": 119093,
+            "probe_markers": [
+                "displayFooterProduct",
+                "displayHeader"
+            ],
+            "body_id": "product",
+            "prestashop_page_name": "product",
+            "add_to_cart_button": [
+                "<button\n            class=\"btn btn-primary add-to-cart\"\n            data-button-action=\"add-to-cart\"\n            type=\"submit\"\n                      >"
+            ],
+            "add_to_cart_form": [
+                "<form action=\"http://localhost:8181/cart\" method=\"post\" id=\"add-to-cart-or-refresh\">"
+            ],
+            "id_product_inputs": [
+                "<input type=\"hidden\" name=\"id_customization\" value=\"0\" id=\"product_customization_id\" class=\"js-product-customization-id\">",
+                "<input type=\"hidden\" name=\"id_product\" value=\"6\" id=\"product_page_product_id\">"
+            ],
+            "data_id_product_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"22\"",
+                "data-id-product-attribute=\"24\"",
+                "data-id-product-attribute=\"26\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"10\"",
+                "data-id-product=\"11\"",
+                "data-id-product=\"15\"",
+                "data-id-product=\"19\"",
+                "data-id-product=\"7\"",
+                "data-id-product=\"8\"",
+                "data-id-product=\"9\""
+            ],
+            "group_selects": [],
+            "product_details_json": true,
+            "cart_line_data_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"22\"",
+                "data-id-product-attribute=\"24\"",
+                "data-id-product-attribute=\"26\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"10\"",
+                "data-id-product=\"11\"",
+                "data-id-product=\"15\"",
+                "data-id-product=\"19\"",
+                "data-id-product=\"7\"",
+                "data-id-product=\"8\"",
+                "data-id-product=\"9\"",
+                "data-link-action=\"quickview\"",
+                "data-product-id=\"6\""
+            ]
+        },
+        "cart": {
+            "bytes": 64281,
+            "probe_markers": [
+                "displayHeader"
+            ],
+            "body_id": "cart",
+            "prestashop_page_name": "cart",
+            "add_to_cart_button": [],
+            "add_to_cart_form": [],
+            "id_product_inputs": [],
+            "data_id_product_attrs": [],
+            "group_selects": [],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-product-id=\"6\""
+            ]
+        },
+        "checkout": {
+            "bytes": 46437,
+            "probe_markers": [
+                "displayHeader"
+            ],
+            "body_id": "checkout",
+            "prestashop_page_name": "checkout",
+            "add_to_cart_button": [],
+            "add_to_cart_form": [],
+            "id_product_inputs": [],
+            "data_id_product_attrs": [],
+            "group_selects": [],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-link-action=\"delete-address\"",
+                "data-link-action=\"different-invoice-address\"",
+                "data-link-action=\"edit-address\""
+            ]
+        },
+        "confirmation": {
+            "bytes": 87784,
+            "probe_markers": [
+                "displayHeader",
+                "displayOrderConfirmation"
+            ],
+            "body_id": "order-confirmation",
+            "prestashop_page_name": "order-confirmation",
+            "add_to_cart_button": [],
+            "add_to_cart_form": [],
+            "id_product_inputs": [],
+            "data_id_product_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"13\"",
+                "data-id-product-attribute=\"16\"",
+                "data-id-product-attribute=\"19\"",
+                "data-id-product-attribute=\"9\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"2\"",
+                "data-id-product=\"3\"",
+                "data-id-product=\"4\"",
+                "data-id-product=\"5\"",
+                "data-id-product=\"6\"",
+                "data-id-product=\"7\"",
+                "data-id-product=\"8\""
+            ],
+            "group_selects": [],
+            "product_details_json": false,
+            "cart_line_data_attrs": [
+                "data-id-product-attribute=\"0\"",
+                "data-id-product-attribute=\"1\"",
+                "data-id-product-attribute=\"13\"",
+                "data-id-product-attribute=\"16\"",
+                "data-id-product-attribute=\"19\"",
+                "data-id-product-attribute=\"9\"",
+                "data-id-product=\"1\"",
+                "data-id-product=\"2\"",
+                "data-id-product=\"3\"",
+                "data-id-product=\"4\"",
+                "data-id-product=\"5\"",
+                "data-id-product=\"6\"",
+                "data-id-product=\"7\"",
+                "data-id-product=\"8\"",
+                "data-link-action=\"quickview\""
+            ]
+        }
+    },
+    "hooks_by_request": [
+        {
+            "seq": 1,
+            "pid": 98,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/men/1-1-hummingbird-printed-t-shirt.html"
+        },
+        {
+            "seq": 2,
+            "pid": 98,
+            "hook": "displayHeader",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/men/1-1-hummingbird-printed-t-shirt.html"
+        },
+        {
+            "seq": 3,
+            "pid": 98,
+            "hook": "displayFooterProduct",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/men/1-1-hummingbird-printed-t-shirt.html"
+        },
+        {
+            "seq": 1,
+            "pid": 100,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/home-accessories/6-mug-the-best-is-yet-to-come.html"
+        },
+        {
+            "seq": 2,
+            "pid": 100,
+            "hook": "displayHeader",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/home-accessories/6-mug-the-best-is-yet-to-come.html"
+        },
+        {
+            "seq": 3,
+            "pid": 100,
+            "hook": "displayFooterProduct",
+            "php_self": "product",
+            "controller_class": "ProductController",
+            "request_uri": "/home-accessories/6-mug-the-best-is-yet-to-come.html"
+        },
+        {
+            "seq": 1,
+            "pid": 95,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "authentication",
+            "controller_class": "AuthController",
+            "request_uri": "/login"
+        },
+        {
+            "seq": 2,
+            "pid": 95,
+            "hook": "displayHeader",
+            "php_self": "authentication",
+            "controller_class": "AuthController",
+            "request_uri": "/login"
+        },
+        {
+            "seq": 1,
+            "pid": 96,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "index",
+            "controller_class": "IndexController",
+            "request_uri": "/"
+        },
+        {
+            "seq": 2,
+            "pid": 96,
+            "hook": "displayHeader",
+            "php_self": "index",
+            "controller_class": "IndexController",
+            "request_uri": "/"
+        },
+        {
+            "seq": 1,
+            "pid": 97,
+            "hook": "displayHeader",
+            "php_self": "cart",
+            "controller_class": "CartController",
+            "request_uri": "/index.php?controller=cart"
+        },
+        {
+            "seq": 1,
+            "pid": 98,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "cart",
+            "controller_class": "CartController",
+            "request_uri": "/cart?action=show"
+        },
+        {
+            "seq": 2,
+            "pid": 98,
+            "hook": "displayHeader",
+            "php_self": "cart",
+            "controller_class": "CartController",
+            "request_uri": "/cart?action=show"
+        },
+        {
+            "seq": 1,
+            "pid": 99,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "order",
+            "controller_class": "OrderController",
+            "request_uri": "/order"
+        },
+        {
+            "seq": 2,
+            "pid": 99,
+            "hook": "displayHeader",
+            "php_self": "order",
+            "controller_class": "OrderController",
+            "request_uri": "/order"
+        },
+        {
+            "seq": 1,
+            "pid": 100,
+            "hook": "actionFrontControllerSetMedia",
+            "php_self": "order-confirmation",
+            "controller_class": "OrderConfirmationController",
+            "request_uri": "/order-confirmation?id_cart=21&id_module=28&id_order=23&key=288fce2770fa9d76ee2cc7330905763b"
+        },
+        {
+            "seq": 2,
+            "pid": 100,
+            "hook": "displayHeader",
+            "php_self": "order-confirmation",
+            "controller_class": "OrderConfirmationController",
+            "request_uri": "/order-confirmation?id_cart=21&id_module=28&id_order=23&key=288fce2770fa9d76ee2cc7330905763b"
+        },
+        {
+            "seq": 3,
+            "pid": 100,
+            "hook": "displayOrderConfirmation",
+            "php_self": "order-confirmation",
+            "controller_class": "OrderConfirmationController",
+            "request_uri": "/order-confirmation?id_cart=21&id_module=28&id_order=23&key=288fce2770fa9d76ee2cc7330905763b"
+        }
+    ],
+    "add_to_cart_response_keys": [
+        "cart",
+        "errors",
+        "id_customization",
+        "id_product",
+        "id_product_attribute",
+        "quantity",
+        "success"
+    ],
+    "add_to_cart_response_scalars": {
+        "success": true,
+        "id_product": 6,
+        "id_product_attribute": 0,
+        "id_customization": 0,
+        "quantity": 1,
+        "errors": ""
+    }
+}

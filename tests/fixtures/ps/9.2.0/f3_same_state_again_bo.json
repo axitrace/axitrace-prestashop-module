@@ -1,0 +1,11 @@
+{
+    "command": "status 10 PS_OS_PREPARATION via bus",
+    "ps_version": "9.2.0",
+    "php_version": "8.5.12",
+    "result": null,
+    "error": {
+        "class": "PrestaShop\\PrestaShop\\Core\\Domain\\Order\\Exception\\OrderException",
+        "message": "The order has already been assigned this status."
+    },
+    "hooks": []
+}

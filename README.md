@@ -52,7 +52,9 @@ With multistore, every setting follows the shop context selected in the back off
 ```bash
 composer install
 vendor/bin/phpunit
-vendor/bin/phpstan analyse
+vendor/bin/phpstan analyse                 # level 8 without PrestaShop: adapter classes skipped
+_PS_ROOT_DIR_=/path/to/prestashop-8.1.7 vendor/bin/phpstan analyse -c phpstan-prestashop.neon   # every file
+bash scripts/lint-validator.sh             # PrestaShop validator rules, English-only text
 scripts/build-zip.sh /tmp/axitrace.zip   # ZIP with the single root folder axitrace/
 ```
 

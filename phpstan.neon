@@ -1,5 +1,7 @@
-# Level 8 on the PrestaShop-independent code. src/Adapter/ (and axitrace.php) call PrestaShop
-# classes and need the PrestaShop source (_PS_ROOT_DIR_), wired in CI by T5.
+# Fallback: level 8 on the PrestaShop-independent code, for a machine without the PrestaShop source.
+# The PrestaShop-bound classes (main class, adapters, service wiring) are analysed by
+# phpstan-prestashop.neon against PrestaShop 8.1.7 (_PS_ROOT_DIR_); CI runs that one and falls back
+# to this file only when the PrestaShop source cannot be downloaded.
 parameters:
     level: 8
     paths:

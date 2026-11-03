@@ -17,7 +17,7 @@ final class PhpEncryptionCipher implements SecretCipherInterface
     public function encrypt(string $plaintext): string
     {
         $encrypted = $this->engine()->encrypt($plaintext);
-        if (!is_string($encrypted) || $encrypted === '') {
+        if ($encrypted === '') {
             throw new \RuntimeException('PhpEncryption returned no ciphertext.');
         }
 

@@ -16,13 +16,10 @@ final class PrestaShopConfigurationStore implements ConfigurationStoreInterface
 
     public function get(string $key, ?int $idShopGroup = null, ?int $idShop = null): ?string
     {
+        // false when the key is unset; values read from the database are always strings.
         $value = \Configuration::get($key, null, $idShopGroup, $idShop, false);
 
-        if ($value === false || $value === null) {
-            return null;
-        }
-
-        return (string) $value;
+        return is_string($value) ? $value : null;
     }
 
     public function set(string $key, string $value, ?int $idShopGroup = null, ?int $idShop = null): void

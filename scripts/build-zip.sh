@@ -39,6 +39,7 @@ rsync -a \
     --exclude='/phpunit.xml.dist' \
     --exclude='/phpunit.xml' \
     --exclude='/phpstan.neon' \
+    --exclude='/phpstan-prestashop.neon' \
     --exclude='/phpstan.neon.dist' \
     --exclude='*.swp' \
     "${MODULE_DIR}/" "${STAGING}/"

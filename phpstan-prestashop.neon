@@ -1,0 +1,19 @@
+# Full analysis against the PrestaShop 8.1.7 source tree (CI job `prestashop-module`).
+#   _PS_ROOT_DIR_=/path/to/prestashop-8.1.7 vendor/bin/phpstan analyse -c phpstan-prestashop.neon
+# The tree must contain PrestaShop's own vendor/ (release ZIP or the official Docker image).
+# Without it use phpstan.neon: same level, PrestaShop-bound classes excluded.
+includes:
+    - vendor/prestashop/php-dev-tools/phpstan/ps-module-extension.neon
+
+parameters:
+    level: 8
+    # Every PHP file of the module: main class, front controllers, src and tests.
+    paths:
+        - .
+    excludePaths:
+        analyseAndScan:
+            - vendor
+            - build (?)
+            - tests/fixtures
+            # Directory-listing guards (plain header() + exit, no code to analyse).
+            - */index.php

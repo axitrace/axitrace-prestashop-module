@@ -18,6 +18,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
+use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
 use Axitrace\PrestaShop\Install\VersionGuard;
 use Axitrace\PrestaShop\ModuleServices;
 
@@ -127,7 +128,7 @@ class Axitrace extends Module
         $secretKey = $services->secretKeyVault()->read($scope);
         $endpoints = $services->endpointResolver()->resolve($services->config()->trackingDomain($scope));
 
-        $this->context->smarty->assign([
+        $this->smarty()->assign([
             'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey),
         ]);
 
@@ -142,7 +143,8 @@ class Axitrace extends Module
     }
 
     /*
-     * Hooks. Registered at install (HookRegistrar::HOOKS); the behaviour arrives with later releases.
+     * Hooks. Registered at install (HookRegistrar::HOOKS); the order, refund and GDPR behaviour arrives
+     * with later releases.
      */
 
     /**
@@ -150,7 +152,35 @@ class Axitrace extends Module
      */
     public function hookDisplayHeader(array $params): string
     {
-        return '';
+        try {
+            $phpSelf = $this->phpSelf();
+            $scope = ShopScope::context();
+            $json = $this->services()->headerRenderer()->render(
+                $scope,
+                $phpSelf,
+                (string) $this->version,
+                $this->statusUrl(),
+            );
+            if ($json === '') {
+                return '';
+            }
+
+            $html = $this->renderJsonTemplate('header.tpl', $json);
+
+            $cartType = PageContextRenderer::cartPageType($phpSelf);
+            if ($cartType !== null) {
+                $basis = $this->services()->config()->valueBasis($scope);
+                $cart = $this->services()->storefrontReader($this->context)->cart($basis->includesTax(), $basis->includesShipping());
+                if ($cart !== null) {
+                    $renderer = $this->services()->pageContextRenderer();
+                    $html .= $this->renderJsonTemplate('context.tpl', $renderer->encode($renderer->cart($cartType, $cart)));
+                }
+            }
+
+            return $html;
+        } catch (\Throwable $e) {
+            return $this->storefrontFailure('displayHeader', $e);
+        }
     }
 
     /**
@@ -158,7 +188,31 @@ class Axitrace extends Module
      */
     public function hookDisplayFooterProduct(array $params): string
     {
-        return '';
+        try {
+            $scope = ShopScope::context();
+            $config = $this->services()->config();
+            if (!$config->isEnabled($scope)) {
+                return '';
+            }
+
+            $product = $params['product'] ?? null;
+            $productId = (int) (self::field($product, 'id_product') ?? Tools::getValue('id_product'));
+            $variantId = (int) (self::field($product, 'id_product_attribute') ?? Tools::getValue('id_product_attribute'));
+            if ($productId <= 0) {
+                return '';
+            }
+
+            $view = $this->services()->storefrontReader($this->context)->product($productId, $variantId, $config->valueBasis($scope)->includesTax());
+            if ($view === null) {
+                return '';
+            }
+
+            $renderer = $this->services()->pageContextRenderer();
+
+            return $this->renderJsonTemplate('context.tpl', $renderer->encode($renderer->product($view)));
+        } catch (\Throwable $e) {
+            return $this->storefrontFailure('displayFooterProduct', $e);
+        }
     }
 
     /**
@@ -166,7 +220,22 @@ class Axitrace extends Module
      */
     public function hookDisplayOrderConfirmation(array $params): string
     {
-        return '';
+        try {
+            if (!$this->services()->config()->isEnabled(ShopScope::context())) {
+                return '';
+            }
+
+            $view = $this->services()->storefrontReader($this->context)->confirmation($params['order'] ?? null);
+            if ($view === null) {
+                return '';
+            }
+
+            $renderer = $this->services()->pageContextRenderer();
+
+            return $this->renderJsonTemplate('context.tpl', $renderer->encode($renderer->confirmation($view)));
+        } catch (\Throwable $e) {
+            return $this->storefrontFailure('displayOrderConfirmation', $e);
+        }
     }
 
     /**
@@ -174,6 +243,24 @@ class Axitrace extends Module
      */
     public function hookActionFrontControllerSetMedia(array $params): void
     {
+        try {
+            if (!$this->services()->config()->isEnabled(ShopScope::context())) {
+                return;
+            }
+
+            $controller = $this->context->controller;
+            if ($controller instanceof FrontController) {
+                // Bottom of the page, after core.js and the theme (priority 200): the script
+                // subscribes to prestashop.on('updateCart') when it runs.
+                $controller->registerJavascript(
+                    'module-axitrace-storefront',
+                    'modules/' . $this->name . '/views/js/axitrace-storefront.js',
+                    ['position' => 'bottom', 'priority' => 200, 'version' => (string) $this->version],
+                );
+            }
+        } catch (\Throwable $e) {
+            $this->storefrontFailure('actionFrontControllerSetMedia', $e);
+        }
     }
 
     /**
@@ -241,6 +328,67 @@ class Axitrace extends Module
         return $this->services ??= new ModuleServices($this);
     }
 
+    private function phpSelf(): string
+    {
+        $controller = $this->context->controller;
+
+        return $controller instanceof FrontController ? (string) $controller->php_self : '';
+    }
+
+    private function smarty(): Smarty
+    {
+        $smarty = $this->context->smarty;
+        if ($smarty === null) {
+            throw new RuntimeException('Smarty is not initialised.');
+        }
+
+        return $smarty;
+    }
+
+    private function statusUrl(): string
+    {
+        $link = $this->context->link;
+        if (!$link instanceof Link) {
+            throw new RuntimeException('The PrestaShop link service is not initialised.');
+        }
+
+        return (string) $link->getModuleLink((string) $this->name, 'status');
+    }
+
+    private function renderJsonTemplate(string $template, string $json): string
+    {
+        $this->smarty()->assign('axitrace_json', $json);
+
+        return (string) $this->display(__FILE__, 'views/templates/hook/' . $template);
+    }
+
+    /** A value of a hook parameter that may be an array or a PrestaShop lazy array. */
+    private static function field(mixed $source, string $key): mixed
+    {
+        if (is_array($source) || $source instanceof ArrayAccess) {
+            return $source[$key] ?? null;
+        }
+
+        return null;
+    }
+
+    /**
+     * A storefront hook must never break the shop page: the failure is logged with class and
+     * message and recorded as the module's last failure (shown in the back office), and the
+     * hook renders nothing.
+     */
+    private function storefrontFailure(string $hook, \Throwable $e): string
+    {
+        $message = sprintf('%s failed (%s: %s)', $hook, $e::class, $e->getMessage());
+        try {
+            $this->services()->failureRecorder()->record('storefront_' . $hook, $message, ShopScope::context());
+        } catch (\Throwable $recordError) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: %s; recording the failure failed too (%s: %s)', $message, $recordError::class, $recordError->getMessage()), 3, null, 'Axitrace', null, false);
+        }
+
+        return '';
+    }
+
     private function failInstallStep(string $step, \Throwable $e): bool
     {
         $message = sprintf('%s: %s', $e::class, $e->getMessage());
@@ -256,7 +404,7 @@ class Axitrace extends Module
     private function customerGroups(): array
     {
         $groups = [];
-        foreach (Group::getGroups((int) $this->context->language->id, (int) $this->context->shop->id) as $row) {
+        foreach (Group::getGroups((int) ($this->context->language->id ?? 0), (int) ($this->context->shop->id ?? 0)) as $row) {
             $groups[] = ['id' => (int) $row['id_group'], 'name' => (string) $row['name']];
         }
 
@@ -288,6 +436,27 @@ class Axitrace extends Module
     }
 
     /**
+     * The languages HelperForm expects (AdminController::getLanguages() shape), read without the
+     * controller: on 9.x the module page runs behind a Symfony bridge that lacks that method.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function formLanguages(): array
+    {
+        $default = (int) Configuration::get('PS_LANG_DEFAULT');
+        $languages = [];
+        foreach (Language::getLanguages(false) as $language) {
+            if (!is_array($language)) {
+                continue;
+            }
+            $language['is_default'] = (int) ((int) ($language['id_lang'] ?? 0) === $default);
+            $languages[] = $language;
+        }
+
+        return $languages;
+    }
+
+    /**
      * @param list<array<string, mixed>> $definition
      * @param array<string, mixed>       $values
      */
@@ -307,8 +476,8 @@ class Axitrace extends Module
         $helper->submit_action = ConfigFormHandler::SUBMIT;
         $helper->tpl_vars = [
             'fields_value' => $values,
-            'languages' => $this->context->controller->getLanguages(),
-            'id_language' => $this->context->language->id,
+            'languages' => $this->formLanguages(),
+            'id_language' => (int) ($this->context->language->id ?? 0),
         ];
 
         return $helper->generateForm($definition);

@@ -34,4 +34,14 @@ enum ConversionValueBasis: string
 
         return self::tryFrom(strtolower(trim($raw))) ?? self::GrossTotal;
     }
+
+    public function includesTax(): bool
+    {
+        return $this === self::GrossTotal || $this === self::GrossExclShipping;
+    }
+
+    public function includesShipping(): bool
+    {
+        return $this === self::GrossTotal || $this === self::NetTotal;
+    }
 }

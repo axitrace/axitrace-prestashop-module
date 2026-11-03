@@ -15,6 +15,7 @@ use Axitrace\PrestaShop\Adapter\PhpEncryptionCipher;
 use Axitrace\PrestaShop\Adapter\PrestaShopConfigurationStore;
 use Axitrace\PrestaShop\Adapter\PrestaShopDbGateway;
 use Axitrace\PrestaShop\Adapter\PrestaShopLoggerAdapter;
+use Axitrace\PrestaShop\Adapter\PrestaShopStorefrontReader;
 use Axitrace\PrestaShop\Adapter\ProcessEnvironment;
 use Axitrace\PrestaShop\Adapter\SystemClock;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
@@ -23,6 +24,10 @@ use Axitrace\PrestaShop\Config\EndpointResolver;
 use Axitrace\PrestaShop\Config\FailureRecorder;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\SecretKeyVault;
+use Axitrace\PrestaShop\Exclusion\CustomerGroupExclusion;
+use Axitrace\PrestaShop\Hook\Front\HeaderRenderer;
+use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
+use Axitrace\PrestaShop\Hook\Front\StatusResponder;
 use Axitrace\PrestaShop\Install\ConfigInstaller;
 use Axitrace\PrestaShop\Install\HookRegistrar;
 use Axitrace\PrestaShop\Install\SchemaInstaller;
@@ -52,7 +57,7 @@ final class ModuleServices
         return $this->vault ??= new SecretKeyVault(
             $this->store(),
             new PhpEncryptionCipher(),
-            new FailureRecorder($this->store(), new PrestaShopLoggerAdapter(), new SystemClock()),
+            $this->failureRecorder(),
         );
     }
 
@@ -84,6 +89,36 @@ final class ModuleServices
     public function hookRegistrar(): HookRegistrar
     {
         return new HookRegistrar();
+    }
+
+    public function headerRenderer(): HeaderRenderer
+    {
+        return new HeaderRenderer($this->config(), $this->endpointResolver(), $this->exclusion());
+    }
+
+    public function pageContextRenderer(): PageContextRenderer
+    {
+        return new PageContextRenderer();
+    }
+
+    public function statusResponder(): StatusResponder
+    {
+        return new StatusResponder($this->config(), $this->exclusion());
+    }
+
+    public function storefrontReader(\Context $context): PrestaShopStorefrontReader
+    {
+        return new PrestaShopStorefrontReader($context);
+    }
+
+    public function failureRecorder(): FailureRecorder
+    {
+        return new FailureRecorder($this->store(), new PrestaShopLoggerAdapter(), new SystemClock());
+    }
+
+    private function exclusion(): CustomerGroupExclusion
+    {
+        return new CustomerGroupExclusion($this->config());
     }
 
     private function translator(): ModuleTranslator

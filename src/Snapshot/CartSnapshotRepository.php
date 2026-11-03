@@ -65,6 +65,16 @@ final class CartSnapshotRepository
         ));
     }
 
+    /** Deletes the snapshot of one cart (GDPR erasure). */
+    public function delete(int $idCart): void
+    {
+        $this->db->execute(sprintf(
+            'DELETE FROM `%saxitrace_cart_snapshot` WHERE `id_cart` = %d',
+            $this->db->prefix(),
+            $idCart,
+        ));
+    }
+
     /** Deletes snapshots not updated for {@see RETENTION_DAYS} days (called by the retry runner). */
     public function prune(\DateTimeImmutable $now): void
     {

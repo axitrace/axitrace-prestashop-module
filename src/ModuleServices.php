@@ -14,6 +14,7 @@ use Axitrace\PrestaShop\Adapter\ModuleTranslator;
 use Axitrace\PrestaShop\Adapter\NativeSecureRandom;
 use Axitrace\PrestaShop\Adapter\PhpEncryptionCipher;
 use Axitrace\PrestaShop\Adapter\PrestaShopConfigurationStore;
+use Axitrace\PrestaShop\Adapter\PrestaShopCustomerRecordsLocator;
 use Axitrace\PrestaShop\Adapter\PrestaShopDbGateway;
 use Axitrace\PrestaShop\Adapter\PrestaShopLoggerAdapter;
 use Axitrace\PrestaShop\Adapter\PrestaShopOrderReader;
@@ -26,6 +27,8 @@ use Axitrace\PrestaShop\Adapter\ShutdownScheduler;
 use Axitrace\PrestaShop\Adapter\SystemClock;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Admin\ConfigPageNotices;
+use Axitrace\PrestaShop\Admin\DeliveryLog;
+use Axitrace\PrestaShop\Admin\HealthPanel;
 use Axitrace\PrestaShop\Config\DeliveryHealth;
 use Axitrace\PrestaShop\Config\EndpointResolver;
 use Axitrace\PrestaShop\Config\FailureRecorder;
@@ -33,6 +36,7 @@ use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\SecretKeyVault;
 use Axitrace\PrestaShop\Consent\ConsentGate;
 use Axitrace\PrestaShop\Exclusion\CustomerGroupExclusion;
+use Axitrace\PrestaShop\Gdpr\PsGdprHooks;
 use Axitrace\PrestaShop\Hook\Front\CartSnapshotWriter;
 use Axitrace\PrestaShop\Hook\Front\HeaderRenderer;
 use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
@@ -104,6 +108,34 @@ final class ModuleServices
     public function configFormHandler(): ConfigFormHandler
     {
         return new ConfigFormHandler($this->store(), $this->config(), $this->secretKeyVault(), $this->translator());
+    }
+
+    public function healthPanel(): HealthPanel
+    {
+        return new HealthPanel(
+            new DeliveryHealth($this->store(), new SystemClock()),
+            $this->failureRecorder(),
+            $this->failedEventQueue(),
+            $this->platformInfo(),
+            $this->translator(),
+        );
+    }
+
+    public function deliveryLog(): DeliveryLog
+    {
+        return new DeliveryLog($this->failedEventQueue(), $this->lazyTrigger(), $this->translator(), new SystemClock());
+    }
+
+    public function psGdprHooks(): PsGdprHooks
+    {
+        return new PsGdprHooks(
+            new PrestaShopCustomerRecordsLocator($this->db()),
+            new OrderRowRepository($this->db()),
+            $this->cartSnapshots(),
+            $this->failedEventQueue(),
+            $this->failureRecorder(),
+            new PrestaShopLoggerAdapter(),
+        );
     }
 
     public function configPageNotices(): ConfigPageNotices
@@ -300,10 +332,15 @@ final class ModuleServices
     private function orderEventNormalizer(): OrderEventNormalizer
     {
         return new OrderEventNormalizer(
-            new PlatformInfo((string) $this->module->version, _PS_VERSION_, PHP_VERSION),
+            $this->platformInfo(),
             new SystemClock(),
             new PurchaseCostResolver(),
         );
+    }
+
+    private function platformInfo(): PlatformInfo
+    {
+        return new PlatformInfo((string) $this->module->version, _PS_VERSION_, PHP_VERSION);
     }
 
     private function snapshotBuilder(): SnapshotBuilder

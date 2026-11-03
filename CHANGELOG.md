@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-04
+
 ### Added
 - Server-side purchase: sent once per order from the order status change, when the order reaches a
   paid status or is placed with a cash on delivery module (Cash on delivery modules setting), to
@@ -18,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per order per browser tab.
 - Short timeouts (1 s connect, 2 s total); a rejected secret key resends the purchase without costs;
   rejected public or secret keys are shown on the configuration page.
-- Retry queue for purchases (and, later, refunds) that could not be delivered: same event id,
+- Retry queue for purchases and refunds that could not be delivered: same event id,
   retries after 5 minutes, doubling up to 6 hours, at most 10 attempts, failed entries kept 30 days;
   the secret key is never stored in the queue. Retries run at the end of ordinary back-office
   requests, and of storefront requests on PHP-FPM, after the response is sent; no system cron needed.
@@ -33,6 +35,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already sent (priced from the purchase as it was sent), and an order set to Refunded or Canceled
   without a credit slip (the rest of the order). Each refund is sent once; undelivered refunds go to
   the retry queue.
+- psgdpr (PrestaShop's GDPR module): the module is listed among the modules processing personal data;
+  data export includes the order records, cart snapshots and queued deliveries of the customer;
+  erasure deletes the cart snapshots and queued deliveries and blanks the IP address, user agent,
+  cookie and click ids of the customer's orders, keeping the order id and the sent flags.
+- Multistore: every order, refund and retry is sent with the settings of the shop the order was
+  placed in; a value emptied for one shop stays empty for it.
+- Connection health on the configuration page: where events are sent, the last successful delivery,
+  the last failure, whether product costs are accepted, the retry queue and the module, PrestaShop
+  and PHP versions.
+- Delivery log: the last 50 deliveries waiting for a retry or failed, with event id, type, attempts
+  and last error, and a Retry now button.
+- Every back-office string goes through the PrestaShop translation system
+  (`Modules.Axitrace.Admin`), English source.
+
+### Changed
+- Upgrade script for 0.1.0 adds the `purchase_snapshot` column to an existing `axitrace_order` table.
 
 ## [0.0.1] - 2026-11-03
 

@@ -1,11 +1,25 @@
 {**
- * AxiTrace configuration page banners and the optional cron URL.
+ * AxiTrace configuration page: error banners, connection health and the optional cron URL.
  *
  * @license https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
  *}
 {foreach from=$axitrace_errors item=axitrace_error}
   <div class="alert alert-danger" role="alert" data-axitrace-notice="error">{$axitrace_error|escape:'html':'UTF-8'}</div>
 {/foreach}
+<div class="panel" id="axitrace-health">
+  <div class="panel-heading">{l s='Connection health' d='Modules.Axitrace.Admin'}</div>
+  <table class="table">
+    <tbody>
+    {foreach from=$axitrace_health item=axitrace_row}
+      <tr data-axitrace-health="{$axitrace_row.state|escape:'html':'UTF-8'}">
+        <th scope="row" style="width: 30%;">{$axitrace_row.label|escape:'html':'UTF-8'}</th>
+        <td class="{if $axitrace_row.state == 'error'}text-danger{elseif $axitrace_row.state == 'warning'}text-warning{else}text-success{/if}">{$axitrace_row.value|escape:'html':'UTF-8'}</td>
+      </tr>
+    {/foreach}
+    </tbody>
+  </table>
+  <p class="help-block">{l s='Shown for the shop selected in the shop context selector. Errors are also written to Advanced Parameters > Logs; search for AxiTrace.' d='Modules.Axitrace.Admin'}</p>
+</div>
 {if $axitrace_cron_url}
   <div class="panel" id="axitrace-cron">
     <div class="panel-heading">{l s='Cron URL (optional)' d='Modules.Axitrace.Admin'}</div>

@@ -19,6 +19,10 @@ final class FailedEvent
         public readonly string $payload,
         public readonly int $attempts,
         public readonly string $status,
+        /** UTC `Y-m-d H:i:s`: next attempt of a queued row, last attempt of a dead one. */
+        public readonly string $nextAttemptAt = '',
+        public readonly string $lastError = '',
+        public readonly string $createdAt = '',
     ) {
     }
 
@@ -35,6 +39,9 @@ final class FailedEvent
             is_scalar($row['payload'] ?? null) ? (string) $row['payload'] : '',
             is_numeric($row['attempts'] ?? null) ? (int) $row['attempts'] : 0,
             is_scalar($row['status'] ?? null) ? (string) $row['status'] : '',
+            is_scalar($row['next_attempt_at'] ?? null) ? (string) $row['next_attempt_at'] : '',
+            is_scalar($row['last_error'] ?? null) ? (string) $row['last_error'] : '',
+            is_scalar($row['created_at'] ?? null) ? (string) $row['created_at'] : '',
         );
     }
 

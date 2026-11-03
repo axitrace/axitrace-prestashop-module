@@ -105,6 +105,47 @@ final class SchemaInstaller
     }
 
     /**
+     * Columns added after a table was first created; {@see upgrade()} adds the missing ones to an
+     * existing install (CREATE TABLE IF NOT EXISTS leaves an existing table as it is).
+     */
+    public const ADDED_COLUMNS = [
+        'axitrace_order' => [
+            // 0.1.0: what the purchase carried, for refunds (line cancel, rest of a cancellation).
+            'purchase_snapshot' => 'LONGTEXT NULL AFTER `refund_state`',
+        ],
+    ];
+
+    /**
+     * Upgrade step: creates missing tables, then adds missing columns. Never drops, renames or
+     * rewrites anything (A39: the claim/sent flags of existing orders are never touched).
+     *
+     * @return list<string> the columns added, as table.column
+     */
+    public function upgrade(): array
+    {
+        $this->install();
+
+        $added = [];
+        foreach (self::ADDED_COLUMNS as $table => $columns) {
+            foreach ($columns as $column => $definition) {
+                $exists = $this->db->select(sprintf(
+                    "SHOW COLUMNS FROM `%s%s` LIKE '%s'",
+                    $this->db->prefix(),
+                    $table,
+                    $this->db->escapeLike($column),
+                ));
+                if ($exists !== []) {
+                    continue;
+                }
+                $this->db->execute(sprintf('ALTER TABLE `%s%s` ADD COLUMN `%s` %s', $this->db->prefix(), $table, $column, $definition));
+                $added[] = $table . '.' . $column;
+            }
+        }
+
+        return $added;
+    }
+
+    /**
      * @return list<string>
      */
     public function dropStatements(): array

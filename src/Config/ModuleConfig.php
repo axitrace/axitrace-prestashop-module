@@ -146,8 +146,10 @@ final class ModuleConfig
 
     /**
      * Technical names of the cash on delivery payment modules. The default (ps_cashondelivery) is
-     * written at install only: PrestaShop stores an emptied field as NULL, so falling back to the
-     * default on read would make the list impossible to empty.
+     * written at install only: falling back to the default on read would make the list impossible
+     * to empty. An emptied value saved for one shop stays empty for that shop (PrestaShop reads the
+     * stored NULL back as '' and does not fall back to the group or all shops; checked on 8.1.7
+     * and 9.2.0).
      *
      * @return list<string>
      */

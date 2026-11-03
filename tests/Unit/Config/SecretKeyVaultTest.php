@@ -103,7 +103,7 @@ final class SecretKeyVaultTest extends TestCase
 
         $vault->store(self::KEY, ShopScope::context());
 
-        self::assertNull($this->store->get(ModuleConfig::LAST_FAILURE));
+        self::assertSame('', (string) $this->store->get(ModuleConfig::LAST_FAILURE), 'cleared: PrestaShop reads the emptied value back as an empty string');
         self::assertSame(SecretKeyState::Present, $vault->read(ShopScope::context())->state);
     }
 

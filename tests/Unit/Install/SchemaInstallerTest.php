@@ -7,6 +7,7 @@ namespace Axitrace\PrestaShop\Tests\Unit\Install;
 use Axitrace\PrestaShop\Install\HookRegistrar;
 use Axitrace\PrestaShop\Install\SchemaInstaller;
 use Axitrace\PrestaShop\Tests\Unit\Support\RecordingDb;
+use Axitrace\PrestaShop\Tests\Unit\Support\RecordingDbWithColumns;
 use PHPUnit\Framework\TestCase;
 
 final class SchemaInstallerTest extends TestCase
@@ -86,5 +87,32 @@ final class SchemaInstallerTest extends TestCase
                 $hook . ' is registered but axitrace.php has no method for it',
             );
         }
+    }
+
+    public function testUpgradeAddsTheMissingPurchaseSnapshotColumnOnly(): void
+    {
+        $db = new RecordingDb('ps_');
+        $added = (new SchemaInstaller($db))->upgrade();
+
+        self::assertSame(['axitrace_order.purchase_snapshot'], $added);
+        self::assertCount(5, $db->executed, '4 CREATE TABLE IF NOT EXISTS + 1 ALTER');
+        self::assertSame('ALTER TABLE `ps_axitrace_order` ADD COLUMN `purchase_snapshot` LONGTEXT NULL AFTER `refund_state`', $db->executed[4]);
+        foreach ($db->executed as $sql) {
+            self::assertStringNotContainsString('purchase_sent_at', str_starts_with($sql, 'CREATE TABLE') ? '' : $sql, 'A39: never touches the sent flags');
+            self::assertStringNotContainsStringIgnoringCase('DROP', $sql);
+        }
+    }
+
+    public function testUpgradeOnAnUpToDateTableAddsNothing(): void
+    {
+        $db = new RecordingDbWithColumns('ps_');
+
+        self::assertSame([], (new SchemaInstaller($db))->upgrade());
+        self::assertCount(4, $db->executed);
+    }
+
+    public function testFreshInstallAlreadyHasThePurchaseSnapshotColumn(): void
+    {
+        self::assertStringContainsString('`purchase_snapshot` LONGTEXT NULL', (new SchemaInstaller(new RecordingDb()))->createStatements()[0]);
     }
 }

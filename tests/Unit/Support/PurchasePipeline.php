@@ -59,6 +59,9 @@ final class PurchasePipeline
     /** @var array<int, int> shop id => shop group id */
     public array $shopGroups = [];
 
+    /** Endpoints of every sender; null = the developer override pointing at {@see SINK}. */
+    public ?EndpointResolver $endpoints = null;
+
     public function __construct(?FakeOrderReader $reader = null)
     {
         $this->store = new InMemoryConfigurationStore();
@@ -102,10 +105,15 @@ final class PurchasePipeline
             new IngestionClient($transport ?? $this->transport),
             $this->config(),
             $this->vault(),
-            new EndpointResolver(new FakeEnvironment(true, [EndpointResolver::ENV_API_OVERRIDE => self::SINK]), new FakeHostResolver()),
+            $this->endpointResolver(),
             $this->failures(),
             $this->health(),
         );
+    }
+
+    public function endpointResolver(): EndpointResolver
+    {
+        return $this->endpoints ?? new EndpointResolver(new FakeEnvironment(true, [EndpointResolver::ENV_API_OVERRIDE => self::SINK]), new FakeHostResolver());
     }
 
     public function normalizer(): OrderEventNormalizer
@@ -162,7 +170,7 @@ final class PurchasePipeline
             new IngestionClient($transport ?? $this->transport),
             $this->config(),
             $this->vault(),
-            new EndpointResolver(new FakeEnvironment(true, [EndpointResolver::ENV_API_OVERRIDE => self::SINK]), new FakeHostResolver()),
+            $this->endpointResolver(),
             $this->failures(),
             $this->health(),
         );

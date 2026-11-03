@@ -22,9 +22,10 @@ final class SecretKeyVault
     public const FAILURE_CODE = 'secret_key_decrypt';
 
     /**
-     * Stored by {@see clear()}. PrestaShop saves an empty value as NULL and Configuration::get()
-     * then falls back to the shop group / global value, so an empty value cannot stop a shop from
-     * inheriting a parent key; this marker can.
+     * Stored by {@see clear()}: an explicit "no key here" for the scope, so a cleared shop never
+     * uses the key of its group or of all shops. (PrestaShop also keeps an empty shop value - it
+     * reads the stored NULL back as '' - but the marker makes the intent visible in the table and
+     * does not depend on that detail.)
      */
     public const CLEARED = 'cleared';
 

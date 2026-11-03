@@ -8,8 +8,11 @@ use Axitrace\PrestaShop\Adapter\ConfigurationStoreInterface;
 
 /**
  * Configuration with PrestaShop's inheritance: shop -> shop group -> global. The "current context"
- * (null ids) is the shop/group set with {@see useContext()}. Like PrestaShop (an empty value is
- * stored as NULL and skipped by isset()), an empty value does not stop inheritance.
+ * (null ids) is the shop/group set with {@see useContext()}. Like PrestaShop, a value saved for a
+ * scope stops the inheritance even when it is empty: PrestaShop stores '' as NULL, but
+ * Configuration::loadConfiguration() reads NULL back as '' and hasKey() is isset() on that '', so
+ * the shop gets '' (checked on 8.1.7 and 9.2.0 with a shop-level NULL row, T11). Only a scope
+ * without any row inherits.
  */
 final class InMemoryConfigurationStore implements ConfigurationStoreInterface
 {
@@ -32,7 +35,7 @@ final class InMemoryConfigurationStore implements ConfigurationStoreInterface
 
         foreach ([[$group, $shop], [$group, 0], [0, 0]] as [$g, $s]) {
             $id = $g . ':' . $s . ':' . $key;
-            if (isset($this->values[$id]) && $this->values[$id] !== '') {
+            if (isset($this->values[$id])) {
                 return $this->values[$id];
             }
         }

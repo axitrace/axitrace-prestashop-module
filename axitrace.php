@@ -15,7 +15,9 @@ if (!defined('_PS_VERSION_')) {
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+use Axitrace\PrestaShop\Admin\ActionToken;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
+use Axitrace\PrestaShop\Admin\DeliveryLog;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
@@ -26,13 +28,16 @@ use Axitrace\PrestaShop\ModuleServices;
 
 class Axitrace extends Module
 {
+    /** Hidden field of the "Retry now" form carrying {@see ActionToken}. */
+    private const RETRY_TOKEN_FIELD = 'axitrace_retry_token';
+
     private ?ModuleServices $services = null;
 
     public function __construct()
     {
         $this->name = 'axitrace';
         $this->tab = 'analytics_stats';
-        $this->version = '0.0.1';
+        $this->version = '0.1.0';
         $this->author = 'AxiTrace';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -127,12 +132,20 @@ class Axitrace extends Module
             }
         }
 
+        if (Tools::isSubmit(DeliveryLog::SUBMIT_RETRY)) {
+            $output .= $this->retryNow($services);
+        }
+
         $secretKey = $services->secretKeyVault()->read($scope);
         $endpoints = $services->endpointResolver()->resolve($services->config()->trackingDomain($scope));
 
         $this->smarty()->assign([
             'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey, $services->failureRecorder()->last($scope)),
+            'axitrace_health' => $services->healthPanel()->rows($scope, $endpoints, $secretKey->state),
             'axitrace_cron_url' => $this->cronUrl($services->config()->cronToken()),
+            'axitrace_log' => $services->deliveryLog()->entries(),
+            'axitrace_retry_url' => $this->configureUrl(),
+            'axitrace_retry_token' => $this->actionToken()->forEmployee(DeliveryLog::SUBMIT_RETRY, $this->employeeId()),
         ]);
 
         $values = $handler->currentValues($scope);
@@ -142,12 +155,51 @@ class Axitrace extends Module
 
         return $output
             . $this->display(__FILE__, 'views/templates/admin/configure.tpl')
-            . $this->renderForm($handler->formDefinition($groups, $secretKey->state), $values);
+            . $this->renderForm($handler->formDefinition($groups, $secretKey->state), $values)
+            . $this->display(__FILE__, 'views/templates/admin/delivery_log.tpl');
+    }
+
+    /** "Retry now" in the delivery log: a back-office POST carrying the module's action token. */
+    private function retryNow(ModuleServices $services): string
+    {
+        $given = Tools::getValue(self::RETRY_TOKEN_FIELD);
+        if (!$this->actionToken()->isValid(DeliveryLog::SUBMIT_RETRY, $this->employeeId(), is_string($given) ? $given : '')) {
+            return $this->displayError($this->trans('The page has expired. Reload it and click Retry now again.', [], 'Modules.Axitrace.Admin'));
+        }
+
+        try {
+            $log = $services->deliveryLog();
+
+            return $this->displayConfirmation($log->summary($log->retryNow()));
+        } catch (\Throwable $e) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: Retry now failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, true);
+
+            return $this->displayError($this->trans('Retry now failed: %error%', ['%error%' => htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')], 'Modules.Axitrace.Admin'));
+        }
+    }
+
+    private function actionToken(): ActionToken
+    {
+        // _COOKIE_KEY_ is the shop's own secret (config/parameters.php), never sent to a browser.
+        return new ActionToken(defined('_COOKIE_KEY_') ? (string) constant('_COOKIE_KEY_') : '');
+    }
+
+    private function employeeId(): int
+    {
+        $employee = $this->context->employee;
+
+        return $employee instanceof Employee ? (int) $employee->id : 0;
+    }
+
+    /** The module's configuration page URL, with the back-office token (same target as the settings form). */
+    private function configureUrl(): string
+    {
+        return AdminController::$currentIndex . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name
+            . '&token=' . Tools::getAdminTokenLite('AdminModules');
     }
 
     /*
-     * Hooks. Registered at install (HookRegistrar::HOOKS); the GDPR behaviour arrives with a later
-     * release.
+     * Hooks, registered at install (HookRegistrar::HOOKS).
      */
 
     /**
@@ -379,7 +431,8 @@ class Axitrace extends Module
     }
 
     /**
-     * psgdpr only checks that the module is registered on this hook.
+     * psgdpr only checks that the module is registered on this hook (it is then listed among the
+     * modules that process personal data).
      *
      * @param array<string, mixed> $params
      */
@@ -388,19 +441,38 @@ class Axitrace extends Module
     }
 
     /**
-     * @param array<string, mixed> $params
+     * psgdpr data export: what the module stored for the customer's orders and carts, as JSON.
+     *
+     * @param array<mixed> $params
      */
     public function hookActionExportGDPRData(array $params): string
     {
-        return (string) json_encode([]);
+        try {
+            return $this->services()->psGdprHooks()->export($params);
+        } catch (\Throwable $e) {
+            // PsGdprHooks never throws; this guards the wiring (service construction) itself.
+            $message = sprintf('AxiTrace: GDPR export failed (%s: %s)', $e::class, $e->getMessage());
+            PrestaShopLogger::addLog($message, 3, null, 'Axitrace', null, true);
+
+            return (string) json_encode([['record' => 'error', 'id' => '', 'recorded_at' => '', 'content' => $message]]);
+        }
     }
 
     /**
-     * @param array<string, mixed> $params
+     * psgdpr erasure: deletes the customer's cart snapshots and queued deliveries, blanks the
+     * attribution data of their orders (the sent flags stay).
+     *
+     * @param array<mixed> $params
      */
     public function hookActionDeleteGDPRCustomer(array $params): string
     {
-        return (string) json_encode(true);
+        try {
+            return $this->services()->psGdprHooks()->delete($params);
+        } catch (\Throwable $e) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: GDPR erasure failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, true);
+
+            return (string) json_encode(false);
+        }
     }
 
     /**

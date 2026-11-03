@@ -70,6 +70,12 @@ final class InMemoryModuleDb implements DbGatewayInterface
             return;
         }
 
+        if (preg_match('/^DELETE FROM `ps_axitrace_cart_snapshot` WHERE `id_cart` = (\\d+)$/', $sql, $m) === 1) {
+            unset($this->cartSnapshots[(int) $m[1]]);
+
+            return;
+        }
+
         if (preg_match("/^DELETE FROM `ps_axitrace_cart_snapshot` WHERE `updated_at` < '([^']+)'$/", $sql, $m) === 1) {
             $this->cartSnapshots = array_filter($this->cartSnapshots, static fn (array $row): bool => $row['updated_at'] >= $m[1]);
 
@@ -125,6 +131,28 @@ final class InMemoryModuleDb implements DbGatewayInterface
             return isset($this->orders[(int) $m[1]]) ? [$this->orders[(int) $m[1]]] : [];
         }
 
+        if (preg_match('/^SELECT \\* FROM `ps_axitrace_failed_event` ORDER BY `id` DESC LIMIT (\\d+)$/', $sql, $m) === 1) {
+            $rows = $this->failedEvents;
+            krsort($rows);
+
+            return array_slice(array_values($rows), 0, (int) $m[1]);
+        }
+        if ($sql === 'SELECT `status`, COUNT(*) AS `rows` FROM `ps_axitrace_failed_event` GROUP BY `status`') {
+            $counts = [];
+            foreach ($this->failedEvents as $row) {
+                $counts[$row['status']] = ($counts[$row['status']] ?? 0) + 1;
+            }
+            $rows = [];
+            foreach ($counts as $status => $count) {
+                $rows[] = ['status' => $status, 'rows' => (string) $count];
+            }
+
+            return $rows;
+        }
+        if (preg_match('/^SELECT \\* FROM `ps_axitrace_failed_event` WHERE (.+) ORDER BY `id`$/', $sql, $m) === 1) {
+            return array_values(array_filter($this->failedEvents, $this->orderCondition($m[1])));
+        }
+
         if (preg_match('/^SELECT \\* FROM `ps_axitrace_refund` WHERE `id_order` = (\\d+) ORDER BY `id`$/', $sql, $m) === 1) {
             return array_values(array_filter($this->refunds, static fn (array $r): bool => (int) $r['id_order'] === (int) $m[1]));
         }
@@ -164,6 +192,24 @@ final class InMemoryModuleDb implements DbGatewayInterface
         if (preg_match("/^DELETE FROM `ps_axitrace_failed_event` WHERE `status` = '(\\w+)' AND `next_attempt_at` < '([^']+)'$/", $sql, $m) === 1) {
             $before = count($this->failedEvents);
             $this->failedEvents = array_filter($this->failedEvents, static fn (array $r): bool => !($r['status'] === $m[1] && $r['next_attempt_at'] < $m[2]));
+
+            return $before - count($this->failedEvents);
+        }
+        if (preg_match("/^UPDATE `ps_axitrace_failed_event` SET `next_attempt_at` = '([^']+)' WHERE `status` = '(\\w+)'$/", $sql, $m) === 1) {
+            $changed = 0;
+            foreach ($this->failedEvents as $id => $row) {
+                if ($row['status'] === $m[2] && $row['next_attempt_at'] !== $m[1]) {
+                    $this->failedEvents[$id]['next_attempt_at'] = $m[1];
+                    ++$changed;
+                }
+            }
+
+            return $changed;
+        }
+        if (preg_match('/^DELETE FROM `ps_axitrace_failed_event` WHERE (.+)$/', $sql, $m) === 1 && str_contains($m[1], '`event_id`')) {
+            $before = count($this->failedEvents);
+            $matches = $this->orderCondition($m[1]);
+            $this->failedEvents = array_filter($this->failedEvents, static fn (array $r): bool => !$matches($r));
 
             return $before - count($this->failedEvents);
         }
@@ -215,6 +261,22 @@ final class InMemoryModuleDb implements DbGatewayInterface
         }
 
         throw new \LogicException('Statement not supported by the fake: ' . $sql);
+    }
+
+    /**
+     * The WHERE of FailedEventQueue::forOrder() / deleteForOrder().
+     *
+     * @return \Closure(array<string, mixed>): bool
+     */
+    private function orderCondition(string $where): \Closure
+    {
+        if (preg_match("/^(?:\\(`event_id` = '((?:[^'\\\\]|\\\\.)*)' OR )?`event_id` LIKE '((?:[^'\\\\]|\\\\.)*)%'\\)?$/", $where, $m) !== 1) {
+            throw new \LogicException('Condition not supported by the fake: ' . $where);
+        }
+        $eventId = stripslashes($m[1]);
+        $prefix = stripcslashes(stripslashes($m[2]));
+
+        return static fn (array $row): bool => ($eventId !== '' && $row['event_id'] === $eventId) || str_starts_with((string) $row['event_id'], $prefix);
     }
 
     private function updateConfiguration(string $sql): int

@@ -86,4 +86,20 @@ final class OrderRowRepository
             $idOrder,
         ));
     }
+
+    /**
+     * Replaces the attribution snapshot (GDPR erasure keeps only the consent decision). The order
+     * id, event id and the claim/sent flags are never touched, so the order is never sent again.
+     *
+     * @param array<string, mixed>|null $snapshot
+     */
+    public function replaceSnapshot(int $idOrder, ?array $snapshot): void
+    {
+        $this->db->update(sprintf(
+            'UPDATE `%saxitrace_order` SET `snapshot` = %s WHERE `id_order` = %d',
+            $this->db->prefix(),
+            $snapshot === null ? 'NULL' : "'" . $this->db->escape(SnapshotBuilder::encode($snapshot)) . "'",
+            $idOrder,
+        ));
+    }
 }

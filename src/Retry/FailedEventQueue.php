@@ -187,6 +187,93 @@ final class FailedEventQueue
         }
     }
 
+    /**
+     * The newest rows, queued and dead, for the back-office delivery log.
+     *
+     * @return list<FailedEvent>
+     */
+    public function recent(int $limit): array
+    {
+        return array_map(FailedEvent::fromRow(...), $this->db->select(sprintf(
+            'SELECT * FROM `%saxitrace_failed_event` ORDER BY `id` DESC LIMIT %d',
+            $this->db->prefix(),
+            max(1, $limit),
+        )));
+    }
+
+    /**
+     * Number of rows per status.
+     *
+     * @return array{queued: int, dead: int}
+     */
+    public function counts(): array
+    {
+        $counts = [self::STATUS_QUEUED => 0, self::STATUS_DEAD => 0];
+        foreach ($this->db->select(sprintf(
+            'SELECT `status`, COUNT(*) AS `rows` FROM `%saxitrace_failed_event` GROUP BY `status`',
+            $this->db->prefix(),
+        )) as $row) {
+            $status = is_scalar($row['status'] ?? null) ? (string) $row['status'] : '';
+            if (array_key_exists($status, $counts)) {
+                $counts[$status] = (int) $row['rows'];
+            }
+        }
+
+        return ['queued' => $counts[self::STATUS_QUEUED], 'dead' => $counts[self::STATUS_DEAD]];
+    }
+
+    /** "Retry now": every queued row becomes due at once; returns how many. */
+    public function makeQueuedDue(\DateTimeImmutable $now): int
+    {
+        $changed = $this->db->update(sprintf(
+            "UPDATE `%saxitrace_failed_event` SET `next_attempt_at` = '%s' WHERE `status` = '%s'",
+            $this->db->prefix(),
+            self::utc($now),
+            self::STATUS_QUEUED,
+        ));
+        $this->refreshDueAt();
+
+        return $changed;
+    }
+
+    /**
+     * Every row (queued or dead) of one order: its purchase (by the purchase event id) and its
+     * refunds (refund ids `prestashop:<id_order>:...`). For GDPR export and erasure.
+     *
+     * @return list<FailedEvent>
+     */
+    public function forOrder(int $idOrder, string $purchaseEventId): array
+    {
+        return array_map(FailedEvent::fromRow(...), $this->db->select(sprintf(
+            'SELECT * FROM `%saxitrace_failed_event` WHERE %s ORDER BY `id`',
+            $this->db->prefix(),
+            $this->orderCondition($idOrder, $purchaseEventId),
+        )));
+    }
+
+    /** Deletes every row of one order ({@see forOrder()}); returns how many. */
+    public function deleteForOrder(int $idOrder, string $purchaseEventId): int
+    {
+        $deleted = $this->db->update(sprintf(
+            'DELETE FROM `%saxitrace_failed_event` WHERE %s',
+            $this->db->prefix(),
+            $this->orderCondition($idOrder, $purchaseEventId),
+        ));
+        $this->refreshDueAt();
+
+        return $deleted;
+    }
+
+    private function orderCondition(int $idOrder, string $purchaseEventId): string
+    {
+        $refunds = sprintf("`event_id` LIKE '%s%%'", $this->db->escapeLike(sprintf('prestashop:%d:', $idOrder)));
+        if (trim($purchaseEventId) === '') {
+            return $refunds;
+        }
+
+        return sprintf("(`event_id` = '%s' OR %s)", $this->db->escape($purchaseEventId), $refunds);
+    }
+
     private function isQueued(string $eventId, string $endpoint): bool
     {
         return $this->db->select(sprintf(

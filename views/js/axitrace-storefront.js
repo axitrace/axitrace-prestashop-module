@@ -8,8 +8,10 @@
  *   - product.view       product page (page view itself is sent by the SDK on init)
  *   - product.addToCart  PrestaShop 'updateCart' event with reason.linkAction 'add-to-cart'
  *                        (product page, quick view and listing buttons; core.js, both themes)
- *   - begin_checkout     once per checkout page load
- *   - add_payment_info   once per checkout page load, when a payment option is selected
+ *   - begin_checkout     once per cart content per tab: the PrestaShop checkout reloads the page at
+ *                        every step (personal information, addresses, shipping, payment), so the
+ *                        cart signature is kept in sessionStorage; a changed cart starts again
+ *   - add_payment_info   once per cart content per tab, when a payment option is first selected
  *   - transaction.charge order confirmation page, only when the module rendered a purchase (the
  *                        order is paid or cash on delivery), with the server purchase's eventSalt
  *                        so AxiTrace keeps one; once per order id (sessionStorage guard)
@@ -56,6 +58,8 @@
     var CONSENT_POLL_MAX_TICKS = 120; // 60 s
     var MAX_PENDING_EVENTS = 50;
     var PURCHASE_GUARD_PREFIX = 'axitrace_ps_purchase_';
+    var CHECKOUT_GUARD_PREFIX = 'axitrace_ps_checkout_';
+    var PAYMENT_INFO_GUARD_PREFIX = 'axitrace_ps_payment_info_';
     var UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     var ADD_FORM_MAX_AGE_MS = 30000;
 
@@ -220,6 +224,28 @@
             }
         }
         return data;
+    }
+
+    /**
+     * Identifies the cart content of a checkout page (currency, value, lines and quantities), so a
+     * step reload of the same checkout is recognised while a changed cart counts as a new checkout.
+     */
+    function cartSignature(context) {
+        var items = context.items || [];
+        var parts = [String(context.currency || ''), String(round2(context.value))];
+        for (var i = 0; i < items.length; i++) {
+            parts.push(String(toId(items[i].productId)) + ':' + String(toId(items[i].variantId)) + 'x' + String(toId(items[i].quantity)));
+        }
+        return parts.join('|');
+    }
+
+    /** Hand-off guard: true when the event may leave now; marks the tab so a reload does not resend. */
+    function onceForTab(win, key) {
+        if (sessionFlag(win, key)) {
+            return false;
+        }
+        setSessionFlag(win, key);
+        return true;
     }
 
     function sessionFlag(win, key) {
@@ -580,9 +606,16 @@
                 return;
             }
             paymentInfoSent = true;
+            var paymentGuard = PAYMENT_INFO_GUARD_PREFIX + cartSignature(context);
+            if (sessionFlag(win, paymentGuard)) {
+                debug('add_payment_info already sent for this cart');
+                return;
+            }
             send('add_payment_info', cartEventData(context, {
                 paymentType: target.getAttribute('data-module-name') || ''
-            }));
+            }), function () {
+                return onceForTab(win, paymentGuard);
+            });
         }
 
         function subscribePrestaShop() {
@@ -601,7 +634,14 @@
             }
             if (context.type === 'checkout' && !checkoutSent) {
                 checkoutSent = true;
-                send('begin_checkout', cartEventData(context));
+                var checkoutGuard = CHECKOUT_GUARD_PREFIX + cartSignature(context);
+                if (sessionFlag(win, checkoutGuard)) {
+                    debug('begin_checkout already sent for this cart (checkout step reload)');
+                } else {
+                    send('begin_checkout', cartEventData(context), function () {
+                        return onceForTab(win, checkoutGuard);
+                    });
+                }
             }
             if (context.type === 'confirmation') {
                 trackPurchase();

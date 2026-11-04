@@ -344,6 +344,51 @@ test('checkout: begin_checkout once, add_payment_info once on the first payment 
     assert.equal(page.events[1][1].paymentType, 'ps_wirepayment');
 });
 
+test('checkout step reloads: begin_checkout and add_payment_info once per cart, again for a changed cart', () => {
+    // PrestaShop reloads the checkout page at every step (personal information, addresses, shipping,
+    // payment); the E2E on 8.1.7 stored four begin_checkout rows for one checkout before this guard.
+    const storage = fakeSessionStorage();
+    const context = (quantity) => ({
+        type: 'checkout', currency: 'EUR', value: 11.9 * quantity, itemCount: quantity,
+        items: [{ productId: '6', variantId: '0', name: 'Mug', sku: 'demo_13', price: 11.9, quantity, category: 'home', brand: '' }],
+    });
+    const option = new FakeElement('input', { name: 'payment-option', 'data-module-name': 'ps_cashondelivery', checked: true });
+    const step = (quantity, choosePayment) => {
+        const page = makePage({ context: context(quantity), config: { pageType: 'order' } });
+        page.win.sessionStorage = storage;
+        storefront.boot(page.win, page.doc);
+        if (choosePayment) {
+            page.doc.dispatch('change', { target: option });
+        }
+        return page.events.map(([name]) => name);
+    };
+
+    assert.deepEqual(step(1, false), ['begin_checkout']);   // personal information
+    assert.deepEqual(step(1, false), []);                   // addresses
+    assert.deepEqual(step(1, false), []);                   // shipping
+    assert.deepEqual(step(1, true), ['add_payment_info']);  // payment
+    assert.deepEqual(step(1, true), []);                    // payment step reloaded
+    assert.deepEqual(step(2, true), ['begin_checkout', 'add_payment_info']); // the cart changed
+});
+
+test('checkout in consent mode browser: the checkout guard is set only once the event really leaves', () => {
+    const storage = fakeSessionStorage();
+    const context = {
+        type: 'checkout', currency: 'EUR', value: 11.9, itemCount: 1,
+        items: [{ productId: '6', variantId: '0', name: 'Mug', sku: 'demo_13', price: 11.9, quantity: 1, category: '', brand: '' }],
+    };
+    const gated = makePage({ context, config: { pageType: 'order', consentMode: 'browser', consentCookie: 'consent' } });
+    gated.win.sessionStorage = storage;
+    storefront.boot(gated.win, gated.doc);
+    assert.equal(gated.events.length, 0);
+    assert.deepEqual(Object.keys(storage.data), []);
+
+    const granted = makePage({ context, config: { pageType: 'order', consentMode: 'browser', consentCookie: 'consent' }, cookie: 'consent=yes' });
+    granted.win.sessionStorage = storage;
+    storefront.boot(granted.win, granted.doc);
+    assert.deepEqual(granted.events.map(([name]) => name), ['begin_checkout']);
+});
+
 test('consent mode browser: nothing loads before a grant, the stub queue replays it', () => {
     const page = makePage({ context: productContext, config: { consentMode: 'browser', consentCookie: 'my_consent' } });
     storefront.boot(page.win, page.doc);

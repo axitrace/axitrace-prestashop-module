@@ -118,7 +118,7 @@ final class HealthPanelTest extends TestCase
         $shop2 = self::byLabel(self::panel($pipeline)->rows(ShopScope::shop(1, 2), $endpoints, SecretKeyState::Present));
 
         self::assertSame('2026-11-03T22:12:00+00:00: the retry run failed', $shop1['Last failure']['value']);
-        self::assertSame('2026-11-03T22:11:00+00:00 (2 times since 2026-11-03T22:00:00+00:00): The purchase of order 9 could not be delivered.', $shop1['Earlier failure']['value']);
+        self::assertSame('2026-11-03T22:11:00+00:00 (at least 2 times since 2026-11-03T22:00:00+00:00): The purchase of order 9 could not be delivered.', $shop1['Earlier failure']['value']);
         self::assertSame('2026-11-03T22:12:00+00:00: the retry run failed', $shop2['Last failure']['value']);
         self::assertArrayNotHasKey('Earlier failure', $shop2);
     }

@@ -60,6 +60,12 @@ final class RefundHook
     public const FAILURE_CODE = 'refund_failed';
     public const FAILURE_QUEUE_WRITE = 'refund_queue_write_failed';
     public const FAILURE_BASE_FALLBACK = 'refund_base_fallback';
+    public const FAILURE_STATE_NOT_SAVED = 'refund_state_not_saved';
+
+    private const OUTCOME_SEEN = 'seen';
+    private const OUTCOME_DELIVERED = 'delivered';
+    private const OUTCOME_PENDING = 'pending';
+    private const OUTCOME_REFUSED = 'refused';
 
     /** Amounts below half a cent are "nothing left". */
     private const EPSILON = 0.005;
@@ -96,8 +102,8 @@ final class RefundHook
             }
 
             $body = $this->normalizer->slip($slip, $this->currency($sent, $idOrder));
-            $this->dispatch($idOrder, $scope, RefundLedger::KIND_SLIP, $body);
-            $this->updateRefundState($idOrder, $scope, $sent, null);
+            $outcome = $this->dispatch($idOrder, $scope, RefundLedger::KIND_SLIP, $body);
+            $this->afterDispatch($idOrder, $scope, $sent, null, (string) $body['refundId'], $outcome);
         });
     }
 
@@ -133,8 +139,8 @@ final class RefundHook
             }
 
             $body = $this->normalizer->lineCancel($idOrder, $line, $cancelQuantity, $cumulative, $this->currency($sent, $idOrder), $this->clock->now());
-            $this->dispatch($idOrder, $scope, RefundLedger::KIND_LINE, $body);
-            $this->updateRefundState($idOrder, $scope, $sent, null);
+            $outcome = $this->dispatch($idOrder, $scope, RefundLedger::KIND_LINE, $body);
+            $this->afterDispatch($idOrder, $scope, $sent, null, (string) $body['refundId'], $outcome);
         });
     }
 
@@ -180,8 +186,8 @@ final class RefundHook
             }
 
             $body = $this->normalizer->state($idOrder, $newStateId, $isCancellation, $rest, $this->currency($sent, $idOrder), $order->lines ?? [], $this->clock->now());
-            $this->dispatch($idOrder, $scope, RefundLedger::KIND_STATE, $body);
-            $this->updateRefundState($idOrder, $scope, $sent, $isCancellation ? self::STATE_CANCELLED : self::STATE_REFUNDED);
+            $outcome = $this->dispatch($idOrder, $scope, RefundLedger::KIND_STATE, $body);
+            $this->afterDispatch($idOrder, $scope, $sent, $isCancellation ? self::STATE_CANCELLED : self::STATE_REFUNDED, (string) $body['refundId'], $outcome);
         });
     }
 
@@ -218,13 +224,15 @@ final class RefundHook
      * delivered nor queued would never be reported) and {@see FAILURE_QUEUE_WRITE} is recorded.
      *
      * @param array<string, mixed> $body
+     *
+     * @return self::OUTCOME_* what happened to the refund
      */
-    private function dispatch(int $idOrder, ShopScope $scope, string $kind, array $body): void
+    private function dispatch(int $idOrder, ShopScope $scope, string $kind, array $body): string
     {
         $refundId = (string) $body['refundId'];
         $amount = is_float($body['amount'] ?? null) ? $body['amount'] : 0.0;
         if (!$this->ledger->reserve($idOrder, $refundId, $kind, $amount, (string) $body['currency'])) {
-            return; // reported before: the same slip, line cancel or status seen again
+            return self::OUTCOME_SEEN; // reported before: the same slip, line cancel or status seen again
         }
 
         $idShop = $scope->idShop ?? 0;
@@ -233,34 +241,70 @@ final class RefundHook
         } catch (SecretKeyRejectedException) {
             // Recorded for the banner by the sender. Parked with its reservation: the delivery log
             // lists it and "Retry now" sends it once the merchant entered a valid key.
-            $this->queueWrite($idOrder, $refundId, $scope, 'AxiTrace rejected the secret key', function () use ($refundId, $idShop, $body): void {
+            $queued = $this->queueWrite($idOrder, $refundId, $scope, 'AxiTrace rejected the secret key', function () use ($refundId, $idShop, $body): void {
                 $this->queue->park($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, 'AxiTrace rejected the secret key (HTTP 401): enter a valid secret key, then click Retry now.', $this->clock->now());
             });
 
-            return;
+            return $queued ? self::OUTCOME_PENDING : self::OUTCOME_REFUSED;
         } catch (\Throwable $e) {
             $result = new DeliveryResult(DeliveryOutcome::Retry, null, sprintf('%s: %s', $e::class, mb_substr($e->getMessage(), 0, 200)));
         }
 
         if ($result->isSent()) {
-            $this->ledger->markSent($refundId, $this->clock->now());
-        } elseif ($result->outcome->isFinalFailure()) {
+            try {
+                $this->ledger->markSent($refundId, $this->clock->now());
+            } catch (\Throwable $e) {
+                $this->failures->record(self::FAILURE_STATE_NOT_SAVED, sprintf('The refund %s of order %d WAS delivered to AxiTrace, but marking it sent in the shop failed (%s: %s). Do not report it again manually.', $refundId, $idOrder, $e::class, $e->getMessage()), $scope);
+            }
+
+            return self::OUTCOME_DELIVERED;
+        }
+        if ($result->outcome->isFinalFailure()) {
             $this->ledger->release($refundId);
             $this->queueWrite($idOrder, $refundId, $scope, $result->error, function () use ($refundId, $idShop, $body, $result): void {
                 $this->queue->addDead($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, $result->error, $this->clock->now());
             });
-        } else {
-            $this->queueWrite($idOrder, $refundId, $scope, $result->error, function () use ($refundId, $idShop, $body, $result): void {
-                $this->queue->enqueue($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, $result->error, $this->clock->now());
-            });
+
+            return self::OUTCOME_REFUSED;
+        }
+        $queued = $this->queueWrite($idOrder, $refundId, $scope, $result->error, function () use ($refundId, $idShop, $body, $result): void {
+            $this->queue->enqueue($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, $result->error, $this->clock->now());
+        });
+
+        return $queued ? self::OUTCOME_PENDING : self::OUTCOME_REFUSED;
+    }
+
+    /**
+     * The order's refund state after a dispatch. A refund that already reached AxiTrace (or waits in
+     * the queue) whose local state cannot be written is recorded as such, not as a failed refund,
+     * so nobody reports it a second time by hand.
+     */
+    private function afterDispatch(int $idOrder, ShopScope $scope, ?SentPurchase $sent, ?string $state, string $refundId, string $outcome): void
+    {
+        try {
+            $this->updateRefundState($idOrder, $scope, $sent, $state);
+        } catch (\Throwable $e) {
+            if ($outcome !== self::OUTCOME_DELIVERED && $outcome !== self::OUTCOME_PENDING) {
+                throw $e;
+            }
+            $this->failures->record(self::FAILURE_STATE_NOT_SAVED, sprintf(
+                'The refund %s of order %d %s, but the order\'s refund state could not be updated in the shop (%s: %s). Do not report it again manually.',
+                $refundId,
+                $idOrder,
+                $outcome === self::OUTCOME_DELIVERED ? 'WAS delivered to AxiTrace' : 'is queued and will be delivered',
+                $e::class,
+                $e->getMessage(),
+            ), $scope);
         }
     }
 
-    /** Runs one queue write; on failure releases the reservation and records the failure. */
-    private function queueWrite(int $idOrder, string $refundId, ShopScope $scope, string $deliveryError, callable $write): void
+    /** Runs one queue write; on failure releases the reservation, records the failure and returns false. */
+    private function queueWrite(int $idOrder, string $refundId, ShopScope $scope, string $deliveryError, callable $write): bool
     {
         try {
             $write();
+
+            return true;
         } catch (\Throwable $e) {
             $message = sprintf(
                 'The refund %s of order %d was not delivered (%s) and could not be written to the retry queue (%s: %s); it is reported again only if PrestaShop triggers it again, otherwise report it manually.',
@@ -276,6 +320,8 @@ final class RefundHook
                 $message .= sprintf(' Releasing its reservation failed too (%s: %s).', $releaseError::class, $releaseError->getMessage());
             }
             $this->failures->record(self::FAILURE_QUEUE_WRITE, $message, $scope);
+
+            return false;
         }
     }
 
@@ -292,15 +338,17 @@ final class RefundHook
         $this->rows->setRefundState($idOrder, $state);
     }
 
-    /** {@see refundBase()} without throwing: null when neither total is known. */
+    /**
+     * The total a slip or line refund is compared with for the refund state: the sent purchase,
+     * else the current order total, null when neither is known.
+     */
     private function stateBase(int $idOrder, ShopScope $scope, ?SentPurchase $sent): ?float
     {
         if ($sent !== null) {
             return $sent->totalTaxIncl;
         }
-        $order = $this->orders->read($idOrder);
-
-        return $order === null ? null : $this->refundBase($idOrder, $scope, null, $order);
+        // Only the refunded / partially refunded label depends on it, never an amount: no failure.
+        return $this->orders->read($idOrder)?->totalPaidTaxIncl;
     }
 
     /**

@@ -139,32 +139,41 @@ final class FailedEventQueue
         $this->db->update(sprintf('DELETE FROM `%saxitrace_failed_event` WHERE `id` = %d', $this->db->prefix(), $id));
     }
 
+    /** True when one more failed attempt of $event reaches {@see MAX_ATTEMPTS}. */
+    public static function diesAtNextFailure(FailedEvent $event): bool
+    {
+        return $event->attempts + 1 >= self::MAX_ATTEMPTS;
+    }
+
     /**
-     * Counts one more failed attempt: reschedules the row with the backoff, or marks it dead after
-     * {@see MAX_ATTEMPTS}. Returns true when the row is now dead.
+     * Counts one more failed attempt of a QUEUED row: reschedules it with the backoff, or marks it
+     * dead after {@see MAX_ATTEMPTS} ({@see diesAtNextFailure()}). Returns the rows changed: 0 when
+     * the row was deleted or is no longer queued (dead or parked rows are never brought back).
      */
-    public function recordFailure(FailedEvent $event, string $error, \DateTimeImmutable $now): bool
+    public function recordFailure(FailedEvent $event, string $error, \DateTimeImmutable $now): int
     {
         $attempts = $event->attempts + 1;
-        $dead = $attempts >= self::MAX_ATTEMPTS;
+        $dead = self::diesAtNextFailure($event);
 
-        $this->db->update(sprintf(
-            "UPDATE `%saxitrace_failed_event` SET `attempts` = %d, `next_attempt_at` = '%s', `last_error` = '%s', `status` = '%s' WHERE `id` = %d",
+        return $this->db->update(sprintf(
+            "UPDATE `%saxitrace_failed_event` SET `attempts` = %d, `next_attempt_at` = '%s', `last_error` = '%s', `status` = '%s' WHERE `id` = %d AND `status` = '%s'",
             $this->db->prefix(),
             $attempts,
             self::utc($dead ? $now : $now->modify(sprintf('+%d seconds', self::backoffSeconds($attempts)))),
             $this->db->escape(self::bounded($error)),
             $dead ? self::STATUS_DEAD : self::STATUS_QUEUED,
             $event->id,
+            self::STATUS_QUEUED,
         ));
-
-        return $dead;
     }
 
-    /** Marks a row dead at once (the request was refused; a retry would get the same answer). */
-    public function markDead(FailedEvent $event, string $error, \DateTimeImmutable $now): void
+    /**
+     * Marks a row dead at once (the request was refused; a retry would get the same answer).
+     * Returns the rows changed (0 when the row no longer exists).
+     */
+    public function markDead(FailedEvent $event, string $error, \DateTimeImmutable $now): int
     {
-        $this->db->update(sprintf(
+        return $this->db->update(sprintf(
             "UPDATE `%saxitrace_failed_event` SET `attempts` = %d, `next_attempt_at` = '%s', `last_error` = '%s', `status` = '%s' WHERE `id` = %d",
             $this->db->prefix(),
             $event->attempts + 1,

@@ -219,9 +219,9 @@ final class InMemoryModuleDb implements DbGatewayInterface
 
             return $before - count($this->failedEvents);
         }
-        if (preg_match('/^UPDATE `ps_axitrace_failed_event` SET (.*) WHERE `id` = (\d+)$/s', $sql, $m) === 1) {
+        if (preg_match("/^UPDATE `ps_axitrace_failed_event` SET (.*) WHERE `id` = (\\d+)(?: AND `status` = '(\\w+)')?$/s", $sql, $m) === 1) {
             $id = (int) $m[2];
-            if (!isset($this->failedEvents[$id])) {
+            if (!isset($this->failedEvents[$id]) || (($m[3] ?? '') !== '' && $this->failedEvents[$id]['status'] !== $m[3])) {
                 return 0;
             }
             foreach ($this->assignments($m[1]) as $column => $value) {

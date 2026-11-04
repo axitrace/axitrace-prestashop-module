@@ -22,8 +22,9 @@ use Axitrace\PrestaShop\Adapter\LoggerInterface;
  *   shops share; the health panel shows them in every shop context.
  *
  * A failure that repeats on every request does not write on every request: an entry already
- * recorded is updated (last_at, count, message) at most once every {@see UPDATE_INTERVAL_SECONDS},
- * so `count` is the number of such updates, not of occurrences. Every occurrence is still logged.
+ * recorded is updated (last_at, count, the latest message) at most once every
+ * {@see UPDATE_INTERVAL_SECONDS}, so `count` is a lower bound of the occurrences (the panel says "at
+ * least N times"). Every occurrence is still logged.
  *
  * Every caller clears only its own codes after a success of the same kind (a delivered purchase
  * clears `delivery_failed`, an accepted secret key `secret_key_rejected`); a failure no success can

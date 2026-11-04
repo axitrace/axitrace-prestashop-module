@@ -285,7 +285,7 @@ final class RefundHookTest extends TestCase
         }
     }
 
-    public function testTheCurrentOrderTotalFallbackIsRecordedAndDrivesTheRefundState(): void
+    public function testASlipRefundComparesWithTheCurrentTotalWithoutRecordingAFallback(): void
     {
         $pipeline = self::pipeline();
         $order = self::sentCodOrder($pipeline, '8.1.7');
@@ -296,8 +296,40 @@ final class RefundHookTest extends TestCase
 
         self::assertCount(1, self::refunds($pipeline));
         self::assertSame('refunded', $pipeline->db->orders[$order->idOrder]['refund_state'], 'the whole current total was refunded');
+        self::assertNull($pipeline->lastFailure(), 'the slip amount does not depend on the order total: nothing to record');
+    }
+
+    public function testAStatusRefundComputedFromTheCurrentTotalIsRecorded(): void
+    {
+        $pipeline = self::pipeline();
+        $order = self::replayStatus($pipeline, '9.2.0', 'k_paid_at_creation');
+        $pipeline->db->orders[$order->idOrder]['purchase_snapshot'] = null;
+
+        $pipeline->status($order->idOrder, 7, 0);
+
         self::assertSame(RefundHook::FAILURE_BASE_FALLBACK, $pipeline->lastFailure()['code'] ?? null);
-        self::assertStringContainsString(sprintf('current order total %.2f', $order->totalPaidTaxIncl), (string) $pipeline->lastFailure()['message']);
+        self::assertStringContainsString(sprintf('current order total %.2f', $order->totalPaidTaxIncl), $pipeline->lastFailure()['message']);
+    }
+
+    public function testADeliveredRefundWhoseStateCannotBeSavedSaysItWasDelivered(): void
+    {
+        $pipeline = self::pipeline();
+        $order = self::sentCodOrder($pipeline, '8.1.7');
+        $pipeline->db->orders[$order->idOrder]['purchase_snapshot'] = null;
+        $pipeline->refundReader->addSlip(new RefundSlip(92, $order->idOrder, 5.0, 0.0, new \DateTimeImmutable('2026-11-04T10:00:00+00:00'), []));
+        // The currency comes from the order (no snapshot); the refund state read fails afterwards.
+        $hook = $pipeline->refundHook();
+        $reader = $pipeline->reader;
+        $pipeline->transport->willAnswer(new HttpResponse(202));
+        $reader->readFailure = new \RuntimeException('Lost connection to MySQL server');
+        $reader->readFailureAfter = $reader->reads + 1; // the currency read works, the refund state read fails
+
+        $hook->onSlipAdded($order->idOrder, 92);
+
+        self::assertCount(1, self::refunds($pipeline));
+        self::assertNotNull(array_values($pipeline->db->refunds)[0]['sent_at']);
+        self::assertSame(RefundHook::FAILURE_STATE_NOT_SAVED, $pipeline->lastFailure()['code'] ?? null);
+        self::assertStringContainsString('WAS delivered to AxiTrace', $pipeline->lastFailure()['message']);
     }
 
     public function testOtherStatesOfASentOrderAreNotRefunds(): void

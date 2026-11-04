@@ -89,7 +89,9 @@ final class FailedEventQueueTest extends TestCase
             $now = $now->modify('+7 hours');
             $due = $queue->due($now, 10);
             self::assertCount(1, $due, "attempt $attempt is due");
-            if ($queue->recordFailure($due[0], 'HTTP 503', $now)) {
+            $dies = FailedEventQueue::diesAtNextFailure($due[0]);
+            self::assertSame(1, $queue->recordFailure($due[0], 'HTTP 503', $now));
+            if ($dies) {
                 $deadAfter = $attempt;
             }
         }

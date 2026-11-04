@@ -115,7 +115,7 @@ final class HealthPanel
             $rows[] = [
                 'label' => $i === 0 ? $t->trans('Last failure', [], $d) : $t->trans('Earlier failure', [], $d),
                 'value' => $failure['count'] > 1
-                    ? $t->trans('%time% (%count% times since %first%): %message%', ['%time%' => $failure['last_at'], '%count%' => $failure['count'], '%first%' => $failure['first_at'], '%message%' => $failure['message']], $d)
+                    ? $t->trans('%time% (at least %count% times since %first%): %message%', ['%time%' => $failure['last_at'], '%count%' => $failure['count'], '%first%' => $failure['first_at'], '%message%' => $failure['message']], $d)
                     : $t->trans('%time%: %message%', ['%time%' => $failure['last_at'], '%message%' => $failure['message']], $d),
                 'state' => self::ERROR,
             ];

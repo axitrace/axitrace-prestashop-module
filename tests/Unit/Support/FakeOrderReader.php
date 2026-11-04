@@ -15,6 +15,11 @@ final class FakeOrderReader implements OrderReaderInterface
 
     public int $reads = 0;
 
+    /** Thrown by read() when set, once more than $readFailureAfter reads were made (a database failure). */
+    public ?\Throwable $readFailure = null;
+
+    public int $readFailureAfter = 0;
+
     public function __construct(private readonly OrderStateIds $states = new OrderStateIds(8, 6, 7), PurchaseOrder ...$orders)
     {
         foreach ($orders as $order) {
@@ -30,6 +35,9 @@ final class FakeOrderReader implements OrderReaderInterface
     public function read(int $idOrder): ?PurchaseOrder
     {
         ++$this->reads;
+        if ($this->readFailure !== null && $this->reads > $this->readFailureAfter) {
+            throw $this->readFailure;
+        }
 
         return $this->orders[$idOrder] ?? null;
     }

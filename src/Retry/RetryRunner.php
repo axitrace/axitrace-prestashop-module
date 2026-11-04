@@ -45,6 +45,7 @@ final class RetryRunner
     public const CRON_BUDGET_SECONDS = 25.0;
 
     public const FAILURE_CODE = 'retry_row_failed';
+    public const FAILURE_DELIVERED_STATE = 'delivered_state_not_saved';
 
     public function __construct(
         private readonly FailedEventQueue $queue,
@@ -134,7 +135,18 @@ final class RetryRunner
 
         if ($result->isSent()) {
             $this->queue->delete($event->id);
-            $this->markDelivered($event, $payload, $now);
+            try {
+                $this->markDelivered($event, $payload, $now);
+            } catch (\Throwable $e) {
+                // AxiTrace has it: say so plainly, so nobody re-sends it by hand.
+                $this->failures->recordGlobal(self::FAILURE_DELIVERED_STATE, sprintf(
+                    'The %s %s WAS delivered to AxiTrace, but marking it sent in the shop failed (%s: %s). Do not send it again manually.',
+                    $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? 'refund' : 'purchase',
+                    $event->eventId,
+                    $e::class,
+                    $e->getMessage(),
+                ));
+            }
 
             return 'delivered';
         }
@@ -146,7 +158,7 @@ final class RetryRunner
             return 'dead';
         }
 
-        $isDead = $this->queue->recordFailure($event, $result->error, $now);
+        $isDead = $this->queue->recordFailure($event, $result->error, $now) > 0 && FailedEventQueue::diesAtNextFailure($event);
         if ($isDead) {
             $this->releaseRefund($event, $payload);
             $this->logger->error(sprintf('the %s %s was given up after %d attempts (%s).', $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? 'refund' : 'purchase', $event->eventId, FailedEventQueue::MAX_ATTEMPTS, $result->error));
@@ -168,10 +180,17 @@ final class RetryRunner
     private function rowFailed(FailedEvent $event, \Throwable $e): void
     {
         $what = $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? 'refund' : 'purchase';
-        $message = sprintf('retrying the %s %s failed (%s: %s); it is tried again after the backoff.', $what, $event->eventId, $e::class, $e->getMessage());
+        $message = sprintf('retrying the %s %s failed (%s: %s).', $what, $event->eventId, $e::class, $e->getMessage());
         try {
-            if ($this->queue->recordFailure($event, mb_substr(sprintf('%s: %s', $e::class, $e->getMessage()), 0, 300), $this->clock->now())) {
+            $changed = $this->queue->recordFailure($event, mb_substr(sprintf('%s: %s', $e::class, $e->getMessage()), 0, 300), $this->clock->now());
+            if ($changed === 0) {
+                // Deleted (delivered) or already dead or parked: nothing is retried, nothing resurrected.
+                $message .= ' The row is no longer queued, so it is not retried; check the delivery log.';
+            } elseif (FailedEventQueue::diesAtNextFailure($event)) {
                 $message .= sprintf(' It was given up after %d attempts.', FailedEventQueue::MAX_ATTEMPTS);
+                $message .= $this->releaseAfterDeath($event);
+            } else {
+                $message .= ' It is tried again after the backoff.';
             }
         } catch (\Throwable $queueError) {
             $message .= sprintf(' Counting the attempt failed too (%s: %s), so it is retried at the next run.', $queueError::class, $queueError->getMessage());
@@ -181,6 +200,22 @@ final class RetryRunner
             $this->failures->recordGlobal(self::FAILURE_CODE, $message);
         } catch (\Throwable $recordError) {
             $this->logger->error(sprintf('%s; recording the failure failed too (%s: %s)', $message, $recordError::class, $recordError->getMessage()));
+        }
+    }
+
+    /** A refund row that just died gives its reservation back; returns what to add to the message. */
+    private function releaseAfterDeath(FailedEvent $event): string
+    {
+        $payload = $event->decodedPayload();
+        if ($payload === null) {
+            return '';
+        }
+        try {
+            $this->releaseRefund($event, $payload);
+
+            return '';
+        } catch (\Throwable $releaseError) {
+            return sprintf(' Releasing its refund reservation failed too (%s: %s), so a later status change cannot report it again.', $releaseError::class, $releaseError->getMessage());
         }
     }
 

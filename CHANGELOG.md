@@ -29,6 +29,8 @@ First public release, for PrestaShop 8.1 to 9.x on PHP 8.1 or newer.
 - JSON stored by the module is no longer cut at a `<` (product names such as "Ring <5mm>").
 - A purchase or refund that could not be delivered nor queued is retried instead of lost; one failing
   row no longer blocks a retry batch.
+- A failed or refused queue row is never brought back to the queue; a delivered purchase or refund
+  whose local state could not be saved is reported as delivered, so it is not sent twice by hand.
 - An order or refund without a readable currency, or a status refund without any known total, is
   never sent; the failure is shown in Connection health.
 - The settings form is protected by the module's own token (a forged POST could change the settings

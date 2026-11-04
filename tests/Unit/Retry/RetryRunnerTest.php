@@ -23,6 +23,9 @@ use Axitrace\PrestaShop\Tests\Unit\Support\FakeShopGroupResolver;
 use Axitrace\PrestaShop\Tests\Unit\Support\Fixtures;
 use Axitrace\PrestaShop\Tests\Unit\Support\PurchasePipeline;
 use Axitrace\PrestaShop\Tests\Unit\Support\TickingClock;
+use Axitrace\PrestaShop\Adapter\DbGatewayInterface;
+use Axitrace\PrestaShop\Refund\RefundLedger;
+use Axitrace\PrestaShop\Tests\Unit\Support\ThrowingDb;
 use PHPUnit\Framework\TestCase;
 
 final class RetryRunnerTest extends TestCase
@@ -338,5 +341,99 @@ final class RetryRunnerTest extends TestCase
 
         self::assertSame(1, $report->dead);
         self::assertSame([2], array_keys($pipeline->db->cartSnapshots));
+    }
+
+    /**
+     * @return array{code: string, message: string, first_at: string, last_at: string, count: int}
+     */
+    private static function failure(PurchasePipeline $pipeline, string $code): array
+    {
+        foreach ($pipeline->failures()->allWithGlobal(ShopScope::shop(1, 1)) as $failure) {
+            if ($failure['code'] === $code) {
+                return $failure;
+            }
+        }
+        self::fail(sprintf('no %s failure recorded', $code));
+    }
+
+    private function runnerOn(PurchasePipeline $pipeline, DbGatewayInterface $queueDb, DbGatewayInterface $refundDb): RetryRunner
+    {
+        $pipeline->vault()->store(PurchasePipeline::SK, ShopScope::shop(1, 1));
+
+        return new RetryRunner(
+            $pipeline->queue($queueDb),
+            $pipeline->sender(),
+            $pipeline->refundSender(),
+            new PurchaseLedger($pipeline->db),
+            new RefundLedger($refundDb),
+            new CartSnapshotRepository($pipeline->db),
+            new FakeShopGroupResolver(),
+            $pipeline->failures(),
+            $pipeline->logger,
+            $pipeline->clock,
+        );
+    }
+
+    public function testADeadRowWhoseReleaseFailsStaysDeadAndIsNeverQueuedAgain(): void
+    {
+        $pipeline = new PurchasePipeline();
+        (new RefundLedger($pipeline->db))->reserve(30, 'prestashop:30:slip:1', 'slip', 10.0, 'EUR');
+        $pipeline->queue()->enqueue('prestashop:30:slip:1', 'refund', 1, ['refundId' => 'prestashop:30:slip:1', 'amount' => 10.0], 'HTTP 503', $pipeline->clock->now->modify('-1 hour'));
+        $pipeline->transport->willAnswer(new HttpResponse(400, [], 'currency must be an ISO 4217 code'));
+        $runner = $this->runnerOn($pipeline, $pipeline->db, new FailingStatementDb($pipeline->db, 'DELETE FROM `ps_axitrace_refund`'));
+
+        $report = $runner->run(RetryRunner::CRON_BATCH, 60.0);
+
+        self::assertSame(1, $report->failed);
+        $row = array_values($pipeline->db->failedEvents)[0];
+        self::assertSame(FailedEventQueue::STATUS_DEAD, $row['status'], 'markDead stays: the failed release never brings it back to queued');
+        self::assertNull($pipeline->queue()->dueAt());
+        $failure = self::failure($pipeline, RetryRunner::FAILURE_CODE);
+        self::assertStringContainsString('no longer queued, so it is not retried', $failure['message']);
+        self::assertStringNotContainsString('tried again', $failure['message']);
+    }
+
+    public function testARefundRowThatDiesThroughAFailingRowReleasesItsReservation(): void
+    {
+        $pipeline = new PurchasePipeline();
+        (new RefundLedger($pipeline->db))->reserve(30, 'prestashop:30:slip:2', 'slip', 10.0, 'EUR');
+        $pipeline->queue()->enqueue('prestashop:30:slip:2', 'refund', 1, ['refundId' => 'prestashop:30:slip:2', 'amount' => 10.0], 'HTTP 503', $pipeline->clock->now->modify('-1 hour'));
+        $id = (int) array_key_first($pipeline->db->failedEvents);
+        $pipeline->db->failedEvents[$id]['attempts'] = (string) (FailedEventQueue::MAX_ATTEMPTS - 1);
+        $pipeline->transport->willAnswer(new HttpResponse(503));
+        // The failed attempt cannot be counted the normal way (the update throws once): rowFailed counts it.
+        $queueDb = new FailingStatementDb($pipeline->db, "`last_error` = 'HTTP 503");
+        $runner = $this->runnerOn($pipeline, $queueDb, $pipeline->db);
+
+        $runner->run(RetryRunner::CRON_BATCH, 60.0);
+
+        self::assertSame(FailedEventQueue::STATUS_DEAD, $pipeline->db->failedEvents[$id]['status']);
+        self::assertSame([], $pipeline->db->refunds, 'reservation released: a later status change can report it');
+        self::assertStringContainsString('given up after 10 attempts', self::failure($pipeline, RetryRunner::FAILURE_CODE)['message']);
+    }
+
+    public function testADeliveredPurchaseWhoseStateCannotBeSavedSaysItWasDelivered(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $pipeline->queue()->enqueue('event-7', 'pixel', 1, ['event' => 'transaction.charge', 'orderId' => '7'], 'HTTP 503', $pipeline->clock->now->modify('-1 hour'));
+        $pipeline->transport->willAnswer(new HttpResponse(202));
+        $runner = new RetryRunner(
+            $pipeline->queue(),
+            $pipeline->sender(),
+            $pipeline->refundSender(),
+            new PurchaseLedger(new ThrowingDb()),
+            $pipeline->refundLedger(),
+            new CartSnapshotRepository($pipeline->db),
+            new FakeShopGroupResolver(),
+            $pipeline->failures(),
+            $pipeline->logger,
+            $pipeline->clock,
+        );
+
+        self::assertSame(1, $runner->run(RetryRunner::CRON_BATCH, 60.0)->delivered);
+        self::assertSame([], $pipeline->db->failedEvents);
+        $failure = self::failure($pipeline, RetryRunner::FAILURE_DELIVERED_STATE);
+        self::assertStringContainsString('WAS delivered to AxiTrace', $failure['message']);
+        self::assertStringContainsString('Do not send it again manually', $failure['message']);
     }
 }

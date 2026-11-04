@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- JSON stored by the module (retry queue payloads, attribution snapshots, sent purchase details) is
+  no longer cut at a `<` (a product named "Ring <5mm>" broke the retry and refund records).
+- A refund refused because of the secret key waits in the delivery log ("waiting for a valid secret
+  key") and is sent by "Retry now" once the key is fixed, instead of being dropped.
+- A purchase that could not be delivered nor queued is sent again at the next status change.
+- An order or refund without a readable currency, or a status refund without any known total, is
+  never sent; the failure is shown in Connection health.
+- One failing row no longer stops a retry batch; retry run failures are shown in Connection health.
+- Connection health lists every recorded failure, not only the newest, with a "Dismiss failures"
+  button; a missing attribution snapshot under consent mode "browser and server-side" is shown as a
+  failure.
+- The settings form is protected by the module's own token (a forged POST could change the settings
+  on PrestaShop 9).
+- An invalid shop time zone is logged as a warning.
+
 ## [0.1.0] - 2026-11-04
 
 ### Added

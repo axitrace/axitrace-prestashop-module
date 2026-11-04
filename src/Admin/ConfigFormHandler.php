@@ -32,6 +32,13 @@ final class ConfigFormHandler
     /** HelperForm checkbox inputs are named "<name>_<value id>". */
     public const FIELD_SECRET_CLEAR_INPUT = self::FIELD_SECRET_CLEAR . '_on';
     public const FIELD_EXCLUDED_GROUPS_INPUT = ModuleConfig::EXCLUDED_GROUPS . '[]';
+    /**
+     * Hidden field carrying {@see ActionToken} for {@see SUBMIT}: on 9.x a POST to the legacy
+     * configuration URL with a wrong or missing back-office token is redirected (308, body kept)
+     * to the Symfony route with a fresh valid token, so only this token proves the form was
+     * rendered for the employee (checked on 9.2.0).
+     */
+    public const FIELD_ACTION_TOKEN = 'axitrace_config_token';
 
     /** Request fields read on submit. */
     public const FIELDS = [
@@ -317,6 +324,8 @@ final class ConfigFormHandler
                         'values' => $yesNo,
                         'desc' => $t->trans('Verbose SDK console output in the storefront. Keep it off in production.', [], 'Modules.Axitrace.Admin'),
                     ],
+                    // The module's CSRF token ({@see ActionToken}); its value is set by the module.
+                    ['type' => 'hidden', 'name' => self::FIELD_ACTION_TOKEN],
                 ],
                 'submit' => [
                     'title' => $t->trans('Save', [], 'Modules.Axitrace.Admin'),

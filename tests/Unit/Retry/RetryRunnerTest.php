@@ -13,6 +13,9 @@ use Axitrace\PrestaShop\Purchase\PurchaseLedger;
 use Axitrace\PrestaShop\Retry\FailedEventQueue;
 use Axitrace\PrestaShop\Retry\RetryRunner;
 use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
+use Axitrace\PrestaShop\Admin\DeliveryLog;
+use Axitrace\PrestaShop\Tests\Unit\Support\EchoTranslator;
+use Axitrace\PrestaShop\Tests\Unit\Support\FailingStatementDb;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeEnvironment;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeHostResolver;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeHttpTransport;
@@ -63,7 +66,7 @@ final class RetryRunnerTest extends TestCase
         $pipeline->clock->now = $pipeline->clock->now->modify('+5 minutes');
         $report = $pipeline->runner()->run(RetryRunner::LAZY_BATCH, RetryRunner::LAZY_BUDGET_SECONDS);
 
-        self::assertSame('processed=1 delivered=1 failed=0 dead=0 dropped=0', $report->summary());
+        self::assertSame('processed=1 delivered=1 failed=0 dead=0 parked=0', $report->summary());
         self::assertCount(2, $pipeline->transport->requests);
         self::assertSame($first, $pipeline->transport->requests[1]['payload'], 'the stored request, byte for byte');
         self::assertSame([], $pipeline->db->failedEvents);
@@ -187,6 +190,7 @@ final class RetryRunnerTest extends TestCase
             $pipeline->refundLedger(),
             new CartSnapshotRepository($pipeline->db),
             new FakeShopGroupResolver(),
+            $pipeline->failures(),
             $pipeline->logger,
             $ticking,
         );
@@ -211,7 +215,7 @@ final class RetryRunnerTest extends TestCase
         self::assertSame(5, $pipeline->runner()->run(RetryRunner::CRON_BATCH, 60.0)->processed);
     }
 
-    public function testRefundRowsNeedTheKeyAndAreDroppedWhenItIsRejected(): void
+    public function testRefundRowsNeedTheKeyAndAreParkedWhenItIsRejected(): void
     {
         $pipeline = new PurchasePipeline();
         $past = $pipeline->clock->now->modify('-1 hour');
@@ -227,10 +231,81 @@ final class RetryRunnerTest extends TestCase
         $pipeline->transport->willAnswer(new HttpResponse(401));
         $report = $pipeline->runner()->run(RetryRunner::LAZY_BATCH, RetryRunner::LAZY_BUDGET_SECONDS);
 
-        self::assertSame(1, $report->dropped);
-        self::assertSame([], $pipeline->db->failedEvents);
+        self::assertSame(1, $report->parked);
+        $rows = array_values($pipeline->db->failedEvents);
+        self::assertCount(1, $rows, 'kept for the delivery log, not dropped');
+        self::assertSame(FailedEventQueue::STATUS_PARKED, $rows[0]['status']);
         self::assertSame(PurchasePipeline::SINK . IngestionClient::REFUND_PATH, $pipeline->transport->requests[0]['url']);
-        self::assertStringContainsString('the refund refund-1 was dropped', implode("\n", $pipeline->logger->errors));
+        self::assertStringContainsString('the refund refund-1 waits for a valid secret key', implode("\n", $pipeline->logger->errors));
+        self::assertNull($pipeline->queue()->dueAt(), 'a parked row is never retried on its own');
+
+        // The merchant fixes the key and clicks "Retry now".
+        $pipeline->transport->willAnswer(new HttpResponse(202));
+        $report = (new DeliveryLog($pipeline->queue(), $pipeline->lazyTrigger(), new EchoTranslator(), $pipeline->clock))->retryNow();
+        self::assertSame(1, $report?->delivered);
+        self::assertSame([], $pipeline->db->failedEvents);
+    }
+
+    public function testOneFailingRowNeverBlocksTheBatchAndHousekeepingStillRuns(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $past = $pipeline->clock->now->modify('-1 hour');
+        $pipeline->queue()->enqueue('event-1', 'pixel', 1, ['event' => 'transaction.charge', 'orderId' => '1'], 'HTTP 503', $past);
+        $pipeline->queue()->enqueue('event-2', 'pixel', 1, ['event' => 'transaction.charge', 'orderId' => '2'], 'HTTP 503', $past);
+        $pipeline->db->cartSnapshots[9] = ['id_cart' => '9', 'id_shop' => '1', 'snapshot' => '{}', 'hash' => 'h', 'updated_at' => '2026-01-01 00:00:00'];
+        $pipeline->transport->willAnswer(new HttpResponse(202));
+        // Deleting the delivered row 1 fails (deadlock): row 2 must still be sent.
+        $db = new FailingStatementDb($pipeline->db, 'DELETE FROM `ps_axitrace_failed_event` WHERE `id` = 1');
+        $runner = new RetryRunner(
+            $pipeline->queue($db),
+            $pipeline->sender(),
+            $pipeline->refundSender(),
+            new PurchaseLedger($pipeline->db),
+            $pipeline->refundLedger(),
+            new CartSnapshotRepository($pipeline->db),
+            new FakeShopGroupResolver(),
+            $pipeline->failures(),
+            $pipeline->logger,
+            $pipeline->clock,
+        );
+
+        $report = $runner->run(RetryRunner::CRON_BATCH, 60.0);
+
+        self::assertSame(2, $report->processed);
+        self::assertSame(1, $report->delivered);
+        self::assertSame(1, $report->failed);
+        self::assertCount(2, $pipeline->transport->requests);
+        self::assertSame([1], array_keys($pipeline->db->failedEvents), 'row 1 stays for the next run');
+        self::assertSame([], $pipeline->db->cartSnapshots, 'pruned although a row failed');
+        self::assertSame(RetryRunner::FAILURE_CODE, $pipeline->lastFailure()['code'] ?? null);
+        self::assertStringContainsString('retrying the purchase event-1 failed', $pipeline->lastFailure()['message']);
+    }
+
+    public function testHousekeepingRunsWhenTheBatchQueryFails(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $pipeline->db->cartSnapshots[9] = ['id_cart' => '9', 'id_shop' => '1', 'snapshot' => '{}', 'hash' => 'h', 'updated_at' => '2026-01-01 00:00:00'];
+        $db = new FailingStatementDb($pipeline->db, 'ORDER BY `next_attempt_at`, `id` LIMIT');
+        $runner = new RetryRunner(
+            $pipeline->queue($db),
+            $pipeline->sender(),
+            $pipeline->refundSender(),
+            new PurchaseLedger($pipeline->db),
+            $pipeline->refundLedger(),
+            new CartSnapshotRepository($pipeline->db),
+            new FakeShopGroupResolver(),
+            $pipeline->failures(),
+            $pipeline->logger,
+            $pipeline->clock,
+        );
+
+        try {
+            $runner->run(RetryRunner::CRON_BATCH, 60.0);
+            self::fail('the batch query failure must reach the caller (LazyTrigger records it)');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('Deadlock', $e->getMessage());
+        }
+        self::assertSame([], $pipeline->db->cartSnapshots);
     }
 
     public function testRefundRowIsDeliveredWithTheKey(): void

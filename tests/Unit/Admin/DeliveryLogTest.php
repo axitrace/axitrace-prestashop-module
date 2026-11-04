@@ -68,7 +68,7 @@ final class DeliveryLogTest extends TestCase
         self::assertSame(2, $report->processed, 'both queued rows, 5 minutes before they were due; never the failed one');
         self::assertSame(1, $report->delivered);
         self::assertSame(1, $report->failed);
-        self::assertSame('Retried 2 deliveries: 1 delivered, 1 still failing, 0 failed for good.', $log->summary($report));
+        self::assertSame('Retried 2 deliveries: 1 delivered, 1 still failing, 0 failed for good, 0 waiting for a valid secret key.', $log->summary($report));
         self::assertSame('2026-11-03 22:00:00', $pipeline->db->orders[30]['purchase_sent_at'] ?? '', 'the delivered purchase marks its order sent');
         self::assertSame(['prestashop:30:slip:1', 'dead-event'], array_column($pipeline->db->failedEvents, 'event_id'));
     }

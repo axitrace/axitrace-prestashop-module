@@ -61,6 +61,12 @@ final class PrestaShopDbGateway implements DbGatewayInterface
         return \pSQL($value);
     }
 
+    public function escapeRaw(string $value): string
+    {
+        // html_ok = true: escaped for SQL, no strip_tags (a JSON "Ring <5mm>" stays whole).
+        return \pSQL($value, true);
+    }
+
     public function escapeLike(string $value): string
     {
         return addcslashes(\pSQL($value), '%_');

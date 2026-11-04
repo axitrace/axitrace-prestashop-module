@@ -18,6 +18,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 use Axitrace\PrestaShop\Admin\ActionToken;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Admin\DeliveryLog;
+use Axitrace\PrestaShop\Admin\HealthPanel;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Hook\Front\PageContextRenderer;
@@ -30,6 +31,9 @@ class Axitrace extends Module
 {
     /** Hidden field of the "Retry now" form carrying {@see ActionToken}. */
     private const RETRY_TOKEN_FIELD = 'axitrace_retry_token';
+
+    /** Hidden field of the "Dismiss failures" form carrying {@see ActionToken}. */
+    private const DISMISS_TOKEN_FIELD = 'axitrace_dismiss_token';
 
     private ?ModuleServices $services = null;
 
@@ -109,7 +113,10 @@ class Axitrace extends Module
         $output = '';
         $submitted = null;
 
-        if (Tools::isSubmit(ConfigFormHandler::SUBMIT)) {
+        $configTokenValid = Tools::isSubmit(ConfigFormHandler::SUBMIT) && $this->actionTokenValid(ConfigFormHandler::SUBMIT, ConfigFormHandler::FIELD_ACTION_TOKEN);
+        if (Tools::isSubmit(ConfigFormHandler::SUBMIT) && !$configTokenValid) {
+            $output .= $this->displayError($this->trans('The page has expired. Reload it and save the settings again.', [], 'Modules.Axitrace.Admin'));
+        } elseif (Tools::isSubmit(ConfigFormHandler::SUBMIT)) {
             $submitted = [];
             foreach (ConfigFormHandler::FIELDS as $field) {
                 $submitted[$field] = Tools::getValue($field);
@@ -136,12 +143,18 @@ class Axitrace extends Module
             $output .= $this->retryNow($services);
         }
 
+        if (Tools::isSubmit(HealthPanel::SUBMIT_DISMISS)) {
+            $output .= $this->dismissFailures($services, $scope);
+        }
+
         $secretKey = $services->secretKeyVault()->read($scope);
         $endpoints = $services->endpointResolver()->resolve($services->config()->trackingDomain($scope));
 
         $this->smarty()->assign([
-            'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey, $services->failureRecorder()->last($scope)),
+            'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey, $services->failureRecorder()->all($scope)),
             'axitrace_health' => $services->healthPanel()->rows($scope, $endpoints, $secretKey->state),
+            'axitrace_has_failures' => $services->healthPanel()->hasFailures($scope),
+            'axitrace_dismiss_token' => $this->actionToken()->forEmployee(HealthPanel::SUBMIT_DISMISS, $this->employeeId()),
             'axitrace_cron_url' => $this->cronUrl($services->config()->cronToken()),
             'axitrace_log' => $services->deliveryLog()->entries(),
             'axitrace_retry_url' => $this->configureUrl(),
@@ -152,6 +165,7 @@ class Axitrace extends Module
         if ($submitted !== null) {
             $values = $this->submittedValues($values, $submitted);
         }
+        $values[ConfigFormHandler::FIELD_ACTION_TOKEN] = $this->actionToken()->forEmployee(ConfigFormHandler::SUBMIT, $this->employeeId());
 
         return $output
             . $this->display(__FILE__, 'views/templates/admin/configure.tpl')
@@ -159,11 +173,36 @@ class Axitrace extends Module
             . $this->display(__FILE__, 'views/templates/admin/delivery_log.tpl');
     }
 
+    /** True when the POST carries the module's action token of this employee for $action. */
+    private function actionTokenValid(string $action, string $field): bool
+    {
+        $given = Tools::getValue($field);
+
+        return $this->actionToken()->isValid($action, $this->employeeId(), is_string($given) ? $given : '');
+    }
+
+    /** "Dismiss failures" in the health panel: forgets the recorded failures of the selected shop. */
+    private function dismissFailures(ModuleServices $services, ShopScope $scope): string
+    {
+        if (!$this->actionTokenValid(HealthPanel::SUBMIT_DISMISS, self::DISMISS_TOKEN_FIELD)) {
+            return $this->displayError($this->trans('The page has expired. Reload it and click Dismiss failures again.', [], 'Modules.Axitrace.Admin'));
+        }
+
+        try {
+            $services->failureRecorder()->clearAll($scope);
+
+            return $this->displayConfirmation($this->trans('The recorded failures were dismissed.', [], 'Modules.Axitrace.Admin'));
+        } catch (\Throwable $e) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: dismissing the failures failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, true);
+
+            return $this->displayError($this->trans('Dismissing the failures failed: %error%', ['%error%' => htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')], 'Modules.Axitrace.Admin'));
+        }
+    }
+
     /** "Retry now" in the delivery log: a back-office POST carrying the module's action token. */
     private function retryNow(ModuleServices $services): string
     {
-        $given = Tools::getValue(self::RETRY_TOKEN_FIELD);
-        if (!$this->actionToken()->isValid(DeliveryLog::SUBMIT_RETRY, $this->employeeId(), is_string($given) ? $given : '')) {
+        if (!$this->actionTokenValid(DeliveryLog::SUBMIT_RETRY, self::RETRY_TOKEN_FIELD)) {
             return $this->displayError($this->trans('The page has expired. Reload it and click Retry now again.', [], 'Modules.Axitrace.Admin'));
         }
 

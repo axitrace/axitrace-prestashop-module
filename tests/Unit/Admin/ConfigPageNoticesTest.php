@@ -55,12 +55,27 @@ final class ConfigPageNoticesTest extends TestCase
 
         self::assertSame(
             ['Public key rejected: AxiTrace does not recognise the public key, so purchases are not tracked. Copy the public key of your workspace again.'],
-            $notices->errors($endpoints, SecretKeyResult::absent(), ['at' => '', 'code' => 'public_key_rejected', 'message' => '']),
+            $notices->errors($endpoints, SecretKeyResult::absent(), [['at' => '', 'code' => 'public_key_rejected', 'message' => '']]),
         );
         self::assertSame(
-            ['Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs. Enter the secret key of the same workspace as the public key.'],
-            $notices->errors($endpoints, SecretKeyResult::present('sk_live_x'), ['at' => '', 'code' => 'secret_key_rejected', 'message' => '']),
+            ['Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs and refunds wait in the delivery log. Enter the secret key of the same workspace as the public key, then click Retry now.'],
+            $notices->errors($endpoints, SecretKeyResult::present('sk_live_x'), [['at' => '', 'code' => 'secret_key_rejected', 'message' => '']]),
         );
-        self::assertSame([], $notices->errors($endpoints, SecretKeyResult::absent(), ['at' => '', 'code' => 'delivery_failed', 'message' => '']));
+        self::assertSame([], $notices->errors($endpoints, SecretKeyResult::absent(), [['at' => '', 'code' => 'delivery_failed', 'message' => '']]));
+    }
+
+    public function testEveryRecordedKeyFailureGetsItsBannerNotOnlyTheNewest(): void
+    {
+        $errors = (new ConfigPageNotices(new EchoTranslator()))->errors(
+            new ResolvedEndpoints('https://stat.axitrace.com', 'https://stat.axitrace.com'),
+            SecretKeyResult::present('sk_live_x'),
+            [
+                ['at' => '2026-11-04T10:00:00+00:00', 'code' => 'delivery_failed', 'message' => ''],
+                ['at' => '2026-11-04T09:00:00+00:00', 'code' => 'secret_key_rejected', 'message' => ''],
+            ],
+        );
+
+        self::assertCount(1, $errors);
+        self::assertStringStartsWith('Secret key rejected', $errors[0]);
     }
 }

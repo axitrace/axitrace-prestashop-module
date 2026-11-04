@@ -13,6 +13,9 @@ use Axitrace\PrestaShop\Adapter\ConfigurationStoreInterface;
  * Configuration::loadConfiguration() reads NULL back as '' and hasKey() is isset() on that '', so
  * the shop gets '' (checked on 8.1.7 and 9.2.0 with a shop-level NULL row, T11). Only a scope
  * without any row inherits.
+ *
+ * Values are stored the way Configuration::updateValue($key, $value, false) stores them: through
+ * pSQL(), which strips HTML tags ({@see PsqlEscape}).
  */
 final class InMemoryConfigurationStore implements ConfigurationStoreInterface
 {
@@ -47,12 +50,12 @@ final class InMemoryConfigurationStore implements ConfigurationStoreInterface
     {
         $group = $idShopGroup ?? $this->contextGroup;
         $shop = $idShop ?? $this->contextShop;
-        $this->values[$group . ':' . $shop . ':' . $key] = $value;
+        $this->values[$group . ':' . $shop . ':' . $key] = strip_tags($value);
     }
 
     public function setGlobal(string $key, string $value): void
     {
-        $this->values['0:0:' . $key] = $value;
+        $this->values['0:0:' . $key] = strip_tags($value);
     }
 
     public function delete(string $key): void

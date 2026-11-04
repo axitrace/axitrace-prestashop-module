@@ -25,6 +25,10 @@ use Axitrace\PrestaShop\Config\ModuleConfig;
  * 415, unknown public key), the row is `dead`: kept {@see DEAD_RETENTION_DAYS} days for the delivery
  * log, then pruned. A delivered row is deleted.
  *
+ * A refund AxiTrace refused because of the secret key is `parked`: never retried on its own (the
+ * same key gets the same answer), never pruned, listed in the delivery log, and queued again by
+ * "Retry now" ({@see makeQueuedDue()}) once the merchant has entered a valid key.
+ *
  * AXITRACE_RETRY_DUE_AT (global, Unix time) holds the earliest due row so the lazy trigger can
  * decide without a query whether anything is due.
  */
@@ -35,6 +39,7 @@ final class FailedEventQueue
 
     public const STATUS_QUEUED = 'queued';
     public const STATUS_DEAD = 'dead';
+    public const STATUS_PARKED = 'parked';
 
     public const MAX_ATTEMPTS = 10;
     public const BASE_DELAY_SECONDS = 300;
@@ -85,6 +90,30 @@ final class FailedEventQueue
     public function addDead(string $eventId, string $endpoint, int $idShop, array $payload, string $error, \DateTimeImmutable $now): void
     {
         $this->insert($eventId, $endpoint, $idShop, $payload, 1, $now, $error, self::STATUS_DEAD, $now);
+    }
+
+    /**
+     * Parks a request AxiTrace refused because of the secret key (see the class comment).
+     *
+     * @param array<string, mixed> $payload
+     */
+    public function park(string $eventId, string $endpoint, int $idShop, array $payload, string $error, \DateTimeImmutable $now): void
+    {
+        $this->insert($eventId, $endpoint, $idShop, $payload, 1, $now, $error, self::STATUS_PARKED, $now);
+    }
+
+    /** Parks a queued row whose retry was refused because of the secret key. */
+    public function markParked(FailedEvent $event, string $error, \DateTimeImmutable $now): void
+    {
+        $this->db->update(sprintf(
+            "UPDATE `%saxitrace_failed_event` SET `attempts` = %d, `next_attempt_at` = '%s', `last_error` = '%s', `status` = '%s' WHERE `id` = %d",
+            $this->db->prefix(),
+            $event->attempts + 1,
+            self::utc($now),
+            $this->db->escape(self::bounded($error)),
+            self::STATUS_PARKED,
+            $event->id,
+        ));
     }
 
     /**
@@ -204,11 +233,11 @@ final class FailedEventQueue
     /**
      * Number of rows per status.
      *
-     * @return array{queued: int, dead: int}
+     * @return array{queued: int, parked: int, dead: int}
      */
     public function counts(): array
     {
-        $counts = [self::STATUS_QUEUED => 0, self::STATUS_DEAD => 0];
+        $counts = [self::STATUS_QUEUED => 0, self::STATUS_PARKED => 0, self::STATUS_DEAD => 0];
         foreach ($this->db->select(sprintf(
             'SELECT `status`, COUNT(*) AS `rows` FROM `%saxitrace_failed_event` GROUP BY `status`',
             $this->db->prefix(),
@@ -219,17 +248,19 @@ final class FailedEventQueue
             }
         }
 
-        return ['queued' => $counts[self::STATUS_QUEUED], 'dead' => $counts[self::STATUS_DEAD]];
+        return ['queued' => $counts[self::STATUS_QUEUED], 'parked' => $counts[self::STATUS_PARKED], 'dead' => $counts[self::STATUS_DEAD]];
     }
 
-    /** "Retry now": every queued row becomes due at once; returns how many. */
+    /** "Retry now": every queued and parked row becomes queued and due at once; returns how many. */
     public function makeQueuedDue(\DateTimeImmutable $now): int
     {
         $changed = $this->db->update(sprintf(
-            "UPDATE `%saxitrace_failed_event` SET `next_attempt_at` = '%s' WHERE `status` = '%s'",
+            "UPDATE `%saxitrace_failed_event` SET `next_attempt_at` = '%s', `status` = '%s' WHERE `status` IN ('%s', '%s')",
             $this->db->prefix(),
             self::utc($now),
             self::STATUS_QUEUED,
+            self::STATUS_QUEUED,
+            self::STATUS_PARKED,
         ));
         $this->refreshDueAt();
 
@@ -303,7 +334,7 @@ final class FailedEventQueue
             $this->db->escape(mb_substr($eventId, 0, 64)),
             $endpoint,
             $idShop,
-            $this->db->escape($json),
+            $this->db->escapeRaw($json),
             $attempts,
             self::utc($next),
             $this->db->escape(self::bounded($error)),

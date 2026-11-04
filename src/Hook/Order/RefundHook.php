@@ -22,6 +22,7 @@ use Axitrace\PrestaShop\Http\SecretKeyRejectedException;
 use Axitrace\PrestaShop\Normalizer\RefundEventNormalizer;
 use Axitrace\PrestaShop\Purchase\OrderRowRepository;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
+use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Refund\RefundLedger;
 use Axitrace\PrestaShop\Refund\RefundSender;
 use Axitrace\PrestaShop\Refund\SentLine;
@@ -169,8 +170,7 @@ final class RefundHook
             }
 
             $order = $this->orders->read($idOrder);
-            $sentTotal = $sent->totalTaxIncl ?? $order->totalPaidTaxIncl ?? 0.0;
-            $rest = round($sentTotal - $this->ledger->totalFor($idOrder), 2);
+            $rest = round($this->refundBase($idOrder, $sent, $order) - $this->ledger->totalFor($idOrder), 2);
             if ($rest < self::EPSILON) {
                 $this->updateRefundState($idOrder, $sent, $isCancellation ? self::STATE_CANCELLED : self::STATE_REFUNDED);
 
@@ -226,8 +226,9 @@ final class RefundHook
         try {
             $result = $this->sender->send($body, $scope);
         } catch (SecretKeyRejectedException) {
-            // Recorded for the banner by the sender; it cannot succeed with this key.
-            $this->ledger->release($refundId);
+            // Recorded for the banner by the sender. Parked with its reservation: the delivery log
+            // lists it and "Retry now" sends it once the merchant entered a valid key.
+            $this->queue->park($refundId, FailedEventQueue::ENDPOINT_REFUND, $scope->idShop ?? 0, $body, 'AxiTrace rejected the secret key (HTTP 401): enter a valid secret key, then click Retry now.', $this->clock->now());
 
             return;
         } catch (\Throwable $e) {
@@ -257,13 +258,39 @@ final class RefundHook
         $this->rows->setRefundState($idOrder, $state);
     }
 
+    /**
+     * What a status refund starts from: the total the purchase carried. An order claimed before
+     * 0.1.0 (or with an unreadable purchase snapshot) falls back to the order's current total,
+     * logged because PrestaShop may have changed it since. Neither known: throws, so nothing is
+     * sent and the order is not marked refunded or cancelled.
+     */
+    private function refundBase(int $idOrder, ?SentPurchase $sent, ?PurchaseOrder $order): float
+    {
+        if ($sent !== null) {
+            return $sent->totalTaxIncl;
+        }
+        if ($order === null) {
+            throw new \RuntimeException(sprintf('order %d: neither the sent purchase nor the order itself could be read, so the refunded amount is unknown', $idOrder));
+        }
+
+        $this->logger->error(sprintf('order %d: the purchase snapshot is missing or unreadable; the status refund is computed from the current order total %.2f, which PrestaShop may have changed since the purchase was sent.', $idOrder, $order->totalPaidTaxIncl));
+
+        return $order->totalPaidTaxIncl;
+    }
+
+    /** The refund currency; throws when it is unknown (a refund without a currency is never sent). */
     private function currency(?SentPurchase $sent, int $idOrder): string
     {
         if ($sent !== null && $sent->currency !== '') {
             return $sent->currency;
         }
 
-        return $this->orders->read($idOrder)->currency ?? '';
+        $currency = $this->orders->read($idOrder)->currency ?? '';
+        if ($currency === '') {
+            throw new \RuntimeException(sprintf('order %d: the currency is unknown (no purchase snapshot and no readable order currency), so the refund is not sent', $idOrder));
+        }
+
+        return $currency;
     }
 
     private function guarded(int $idOrder, string $what, callable $work): void

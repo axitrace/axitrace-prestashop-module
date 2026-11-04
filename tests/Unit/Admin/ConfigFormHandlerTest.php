@@ -157,10 +157,16 @@ final class ConfigFormHandlerTest extends TestCase
         self::assertIsArray($inputs);
 
         $labels = [];
+        $hidden = [];
         foreach ($inputs as $input) {
             self::assertIsArray($input);
+            if ($input['type'] === 'hidden') {
+                $hidden[] = $input['name'];
+                continue;
+            }
             $labels[] = $input['type'] === 'checkbox' ? $input['values']['query'][0]['name'] : $input['label'];
         }
+        self::assertSame([ConfigFormHandler::FIELD_ACTION_TOKEN], $hidden, 'the form carries the module CSRF token');
 
         self::assertSame([
             'Enable tracking',

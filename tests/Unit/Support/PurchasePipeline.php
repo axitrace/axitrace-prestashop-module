@@ -118,7 +118,7 @@ final class PurchasePipeline
 
     public function normalizer(): OrderEventNormalizer
     {
-        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), $this->clock, new PurchaseCostResolver());
+        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), $this->clock, new PurchaseCostResolver(), $this->logger);
     }
 
     public function hook(?DbGatewayInterface $db = null, ?HttpTransportInterface $transport = null): OrderStatusHook
@@ -201,6 +201,7 @@ final class PurchasePipeline
             new RefundLedger($this->db),
             new CartSnapshotRepository($this->db),
             new FakeShopGroupResolver($this->shopGroups),
+            $this->failures(),
             $this->logger,
             $this->clock,
         );
@@ -208,7 +209,7 @@ final class PurchasePipeline
 
     public function lazyTrigger(): LazyTrigger
     {
-        return new LazyTrigger($this->queue(), $this->lock(), $this->runner(), $this->scheduler, $this->logger, $this->clock);
+        return new LazyTrigger($this->queue(), $this->lock(), $this->runner(), $this->scheduler, $this->failures(), $this->logger, $this->clock);
     }
 
     public function browserPurchase(): BrowserPurchase

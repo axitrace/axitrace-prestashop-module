@@ -5,7 +5,7 @@
  *}
 <div class="panel" id="axitrace-delivery-log">
   <div class="panel-heading">{l s='Delivery log' d='Modules.Axitrace.Admin'}</div>
-  <p>{l s='The last 50 deliveries waiting for a retry or failed for good. Delivered events are not listed.' d='Modules.Axitrace.Admin'}</p>
+  <p>{l s='The last 50 deliveries waiting for a retry, waiting for a valid secret key or failed for good. Delivered events are not listed.' d='Modules.Axitrace.Admin'}</p>
   {if $axitrace_log}
     <div class="table-responsive">
       <table class="table" data-axitrace-log="1">
@@ -41,6 +41,6 @@
   <form method="post" action="{$axitrace_retry_url|escape:'html':'UTF-8'}">
     <input type="hidden" name="axitrace_retry_token" value="{$axitrace_retry_token|escape:'html':'UTF-8'}">
     <button type="submit" name="submitAxitraceRetryNow" value="1" class="btn btn-default"{if !$axitrace_log} disabled{/if}>{l s='Retry now' d='Modules.Axitrace.Admin'}</button>
-    <span class="help-block">{l s='Sends every delivery waiting for a retry at once. Failed deliveries are not sent again.' d='Modules.Axitrace.Admin'}</span>
+    <span class="help-block">{l s='Sends every delivery waiting for a retry or for a valid secret key at once. Failed deliveries are not sent again.' d='Modules.Axitrace.Admin'}</span>
   </form>
 </div>

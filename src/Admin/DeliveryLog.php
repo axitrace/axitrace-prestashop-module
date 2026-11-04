@@ -17,9 +17,9 @@ use Axitrace\PrestaShop\Retry\RetryRunner;
 
 /**
  * "Delivery log" on the configuration page: the newest {@see LIMIT} rows of the retry queue,
- * queued and failed, and the "Retry now" action, which makes every queued row due and runs one
- * batch at once under the retry lock (the request is a back-office POST checked against the
- * back-office token by the caller).
+ * queued, parked and failed, and the "Retry now" action, which makes every queued and parked row
+ * due and runs one batch at once under the retry lock (a back-office POST checked against the
+ * module's action token by the caller).
  */
 final class DeliveryLog
 {
@@ -47,14 +47,18 @@ final class DeliveryLog
 
         $entries = [];
         foreach ($this->queue->recent(self::LIMIT) as $event) {
-            $failed = $event->status === FailedEventQueue::STATUS_DEAD;
+            $queued = $event->status === FailedEventQueue::STATUS_QUEUED;
             $entries[] = [
                 'event_id' => $event->eventId,
                 'type' => $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? $t->trans('Refund', [], $d) : $t->trans('Purchase', [], $d),
-                'status' => $failed ? $t->trans('Failed', [], $d) : $t->trans('Waiting for a retry', [], $d),
-                'failed' => $failed,
+                'status' => match ($event->status) {
+                    FailedEventQueue::STATUS_QUEUED => $t->trans('Waiting for a retry', [], $d),
+                    FailedEventQueue::STATUS_PARKED => $t->trans('Waiting for a valid secret key: enter it, then click Retry now', [], $d),
+                    default => $t->trans('Failed', [], $d),
+                },
+                'failed' => !$queued,
                 'attempts' => $event->attempts,
-                'next_attempt_at' => $failed ? '' : $event->nextAttemptAt,
+                'next_attempt_at' => $queued ? $event->nextAttemptAt : '',
                 'last_error' => $event->lastError,
                 'created_at' => $event->createdAt,
             ];
@@ -63,10 +67,14 @@ final class DeliveryLog
         return $entries;
     }
 
-    /** Null when another retry run holds the lock. */
+    /**
+     * Queued rows and refunds parked for the secret key are sent at once. Null when another retry
+     * run holds the lock.
+     */
     public function retryNow(): ?RetryReport
     {
-        if ($this->queue->counts()['queued'] === 0) {
+        $counts = $this->queue->counts();
+        if ($counts['queued'] + $counts['parked'] === 0) {
             return new RetryReport();
         }
 
@@ -88,11 +96,12 @@ final class DeliveryLog
             return $t->trans('Nothing is waiting for a retry.', [], $d);
         }
 
-        return $t->trans('Retried %processed% deliveries: %delivered% delivered, %failed% still failing, %dead% failed for good.', [
+        return $t->trans('Retried %processed% deliveries: %delivered% delivered, %failed% still failing, %dead% failed for good, %parked% waiting for a valid secret key.', [
             '%processed%' => $report->processed,
             '%delivered%' => $report->delivered,
             '%failed%' => $report->failed,
-            '%dead%' => $report->dead + $report->dropped,
+            '%dead%' => $report->dead,
+            '%parked%' => $report->parked,
         ], $d);
     }
 }

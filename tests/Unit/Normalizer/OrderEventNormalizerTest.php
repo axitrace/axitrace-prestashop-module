@@ -14,7 +14,9 @@ use Axitrace\PrestaShop\Normalizer\PurchaseCostResolver;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Tests\Unit\Support\Fixtures;
 use Axitrace\PrestaShop\Tests\Unit\Support\MutableClock;
+use Axitrace\PrestaShop\Tests\Unit\Support\SpyLogger;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Axitrace\PrestaShop\Purchase\PurchaseLine;
 use PHPUnit\Framework\TestCase;
 
 final class OrderEventNormalizerTest extends TestCase
@@ -32,7 +34,7 @@ final class OrderEventNormalizerTest extends TestCase
 
     private function normalizer(): OrderEventNormalizer
     {
-        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), new MutableClock(), new PurchaseCostResolver());
+        return new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), new MutableClock(), new PurchaseCostResolver(), new SpyLogger());
     }
 
     /**
@@ -272,6 +274,58 @@ final class OrderEventNormalizerTest extends TestCase
         $order = new PurchaseOrder($base->idOrder, $base->idShop, $base->idShopGroup, $base->idCart, $base->reference, $base->paymentModule, $base->currency, $base->totalPaidTaxIncl, $base->totalPaidTaxExcl, $base->totalShippingTaxIncl, $base->totalShippingTaxExcl, $dateAdd, $timezone, $base->currentStateId, $base->currentStatePaid, $base->customerDefaultGroupId, $base->customer, $base->lines);
 
         self::assertSame($expected, $this->normalizer()->timestamp($order));
+    }
+
+    public function testAnInvalidShopTimeZoneIsLoggedAndReadAsUtc(): void
+    {
+        $logger = new SpyLogger();
+        $normalizer = new OrderEventNormalizer(new PlatformInfo('0.0.1', '8.1.7', '8.1.34'), new MutableClock(), new PurchaseCostResolver(), $logger);
+        $base = self::order('8.1.7', 'k_paid_at_creation');
+
+        self::assertSame('2026-11-03T22:49:33Z', $normalizer->timestamp(new PurchaseOrder(...['dateAdd' => '2026-11-03 22:49:33', 'timezone' => 'Mars/Olympus'] + get_object_vars($base))));
+        self::assertCount(1, $logger->warnings);
+        self::assertStringContainsString('PS_TIMEZONE "Mars/Olympus" is not a valid time zone', $logger->warnings[0]);
+
+        $normalizer->timestamp(new PurchaseOrder(...['timezone' => 'Europe/Warsaw'] + get_object_vars($base)));
+        $normalizer->timestamp(new PurchaseOrder(...['timezone' => ''] + get_object_vars($base)));
+        self::assertCount(1, $logger->warnings, 'a valid or unset time zone is not a warning');
+    }
+
+    public function testA200LineB2bOrderStaysUnderTheIngestionBodyCap(): void
+    {
+        $base = self::order('8.1.7', 'k_paid_at_creation');
+        $template = $base->lines[0];
+        $lines = [];
+        for ($i = 1; $i <= 200; ++$i) {
+            $lines[] = new PurchaseLine(...[
+                'productId' => 1000 + $i,
+                'variantId' => $i,
+                'reference' => sprintf('B2B-FASTENER-%05d', $i),
+                'name' => str_repeat('Stainless steel hex bolt DIN 933 M12 x 80, box of 100 - ', 4),
+                'category' => 'Industrial supplies > Fasteners > Bolts',
+                'brand' => 'Wholesale Brand Name',
+                'idOrderDetail' => 5000 + $i,
+                'quantity' => 40,
+                'originalWholesalePrice' => 3.25,
+            ] + get_object_vars($template));
+        }
+        $order = new PurchaseOrder(...['lines' => $lines] + get_object_vars($base));
+
+        $payload = $this->normalizer()->normalize($order, 'event', 'pk_live_0123456789abcdef0123456789abcdef', ConversionValueBasis::GrossTotal, ['visitorId' => 'v', 'landingUrl' => 'https://shop.example/' . str_repeat('x', 2000)], 'paid', 2);
+        $body = (string) json_encode($payload, \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE | \JSON_PRESERVE_ZERO_FRACTION);
+
+        self::assertCount(200, $payload['data']['products']);
+        self::assertGreaterThan(64 * 1024, strlen($body), 'over the old 64 KB cap: this order used to be refused with a 413');
+        self::assertLessThan(IngestionClient::MAX_PIXEL_BODY_BYTES / 2, strlen($body), 'with room to spare under the 512 KB cap');
+    }
+
+    public function testAPurchaseWithoutAnIsoCurrencyIsRefused(): void
+    {
+        $base = self::order('8.1.7', 'k_paid_at_creation');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('is not an ISO 4217 code');
+        $this->normalizer()->normalize(new PurchaseOrder(...['currency' => ''] + get_object_vars($base)), 'event', 'pk', ConversionValueBasis::GrossTotal, null, 'paid', 2);
     }
 
     /**

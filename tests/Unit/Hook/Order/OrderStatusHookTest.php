@@ -9,11 +9,14 @@ use Axitrace\PrestaShop\Config\DeliveryHealth;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\EventId\Ga4TransactionEventId;
+use Axitrace\PrestaShop\Hook\Order\OrderStatusHook;
 use Axitrace\PrestaShop\Hook\Order\StatusChange;
 use Axitrace\PrestaShop\Purchase\PurchaseLedger;
+use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
 use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
 use Axitrace\PrestaShop\Snapshot\SnapshotBuilder;
+use Axitrace\PrestaShop\Tests\Unit\Support\FailingStatementDb;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeHttpTransport;
 use Axitrace\PrestaShop\Tests\Unit\Support\Fixtures;
 use Axitrace\PrestaShop\Tests\Unit\Support\PurchasePipeline;
@@ -209,6 +212,76 @@ final class OrderStatusHookTest extends TestCase
         $pipeline->place($order, ['consent' => 'granted']);
         $pipeline->status($order->idOrder, 2, 1);
         self::assertCount(1, $pipeline->transport->requests);
+    }
+
+    public function testAMissingSnapshotUnderConsentModeAllIsARecordedFailureNotAConsentDecision(): void
+    {
+        $order = Fixtures::orders('9.2.0', 'k_paid_at_creation')[0];
+
+        foreach (['missing' => null, 'unreadable' => '{"consent":"gran'] as $case => $raw) {
+            $pipeline = new PurchasePipeline();
+            $pipeline->store->setGlobal(ModuleConfig::CONSENT_MODE, 'all');
+            $pipeline->place($order);
+            $pipeline->db->orders[$order->idOrder]['snapshot'] = $raw;
+
+            $pipeline->status($order->idOrder, 2, 1);
+
+            self::assertCount(0, $pipeline->transport->requests, $case . ': the consent decision itself is unchanged');
+            self::assertTrue(PurchaseLedger::isVoid($pipeline->db->orders[$order->idOrder]), $case);
+            self::assertSame(OrderStatusHook::FAILURE_SNAPSHOT_MISSING, $pipeline->lastFailure()['code'] ?? null, $case);
+            self::assertStringContainsString($case === 'missing' ? 'no attribution snapshot was recorded' : 'attribution snapshot is unreadable', $pipeline->lastFailure()['message'], $case);
+            self::assertSame([], $pipeline->logger->infos, $case);
+        }
+
+        // An explicit "denied" is the buyer's choice: info only, nothing recorded.
+        $pipeline = new PurchasePipeline();
+        $pipeline->store->setGlobal(ModuleConfig::CONSENT_MODE, 'all');
+        $pipeline->place($order, ['consent' => 'denied']);
+        $pipeline->status($order->idOrder, 2, 1);
+        self::assertCount(0, $pipeline->transport->requests);
+        self::assertNull($pipeline->lastFailure());
+        self::assertStringContainsString('no consent recorded for server-side tracking', $pipeline->logger->infos[0] ?? '');
+    }
+
+    public function testAQueueWriteFailureReleasesTheClaimAndTheNextStatusChangeResends(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $order = Fixtures::orders('8.1.7', 'b1_wire_order')[0];
+        $pipeline->place($order);
+        $pipeline->transport->willAnswer(new HttpResponse(503), new HttpResponse(202));
+
+        $pipeline->hook(new FailingStatementDb($pipeline->db, 'INSERT INTO `ps_axitrace_failed_event`'))->handle(new StatusChange($order->idOrder, 2, true));
+
+        $row = $pipeline->db->orders[$order->idOrder];
+        self::assertFalse(PurchaseLedger::isClaimed($row), 'released: neither delivered nor queued');
+        self::assertSame([], $pipeline->db->failedEvents);
+        self::assertSame(PurchaseSender::FAILURE_QUEUE_WRITE, $pipeline->lastFailure()['code'] ?? null);
+        self::assertStringContainsString('could not be queued for a retry', $pipeline->lastFailure()['message']);
+
+        $pipeline->status($order->idOrder, 2, 1);
+
+        self::assertCount(2, $pipeline->transport->requests);
+        self::assertSame($pipeline->transport->requests[0]['payload']['eventSalt'], $pipeline->transport->requests[1]['payload']['eventSalt'], 'same eventSalt: AxiTrace deduplicates');
+        self::assertNotNull($pipeline->db->orders[$order->idOrder]['purchase_sent_at']);
+        self::assertNotContains(PurchaseSender::FAILURE_QUEUE_WRITE, array_column($pipeline->failures()->all(ShopScope::shop(1, 1)), 'code'), 'cleared by the delivered purchase');
+    }
+
+    public function testAnOrderWithoutCurrencyIsNotSentAndTheClaimIsGivenBack(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $order = Fixtures::orders('8.1.7', 'b1_wire_order')[0];
+        $pipeline->place(new PurchaseOrder(...['currency' => ''] + get_object_vars($order)));
+
+        $pipeline->status($order->idOrder, 2, 1);
+
+        self::assertCount(0, $pipeline->transport->requests);
+        self::assertFalse(PurchaseLedger::isClaimed($pipeline->db->orders[$order->idOrder]));
+        self::assertStringContainsString('is not an ISO 4217 code', $pipeline->lastFailure()['message'] ?? '');
+
+        $pipeline->reader->add($order);
+        $pipeline->status($order->idOrder, 2, 1);
+        self::assertCount(1, $pipeline->transport->requests, 'the next status change sends it once the currency is readable');
+        self::assertSame($order->currency, $pipeline->transport->requests[0]['payload']['data']['value']['currency'] ?? null);
     }
 
     public function testUnreachableIngestionKeepsTheClaimSoNoLaterStateSendsAgain(): void

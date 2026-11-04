@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Axitrace\PrestaShop\Tests\Unit\Hook\Order;
 
 use Axitrace\PrestaShop\Adapter\HttpResponse;
+use Axitrace\PrestaShop\Admin\DeliveryLog;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Hook\Order\RefundHook;
@@ -13,7 +14,9 @@ use Axitrace\PrestaShop\Purchase\PurchaseOrder;
 use Axitrace\PrestaShop\Purchase\PurchaseSender;
 use Axitrace\PrestaShop\Refund\RefundSlip;
 use Axitrace\PrestaShop\Refund\SentPurchase;
+use Axitrace\PrestaShop\Retry\FailedEventQueue;
 use Axitrace\PrestaShop\Retry\RetryRunner;
+use Axitrace\PrestaShop\Tests\Unit\Support\EchoTranslator;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeHttpTransport;
 use Axitrace\PrestaShop\Tests\Unit\Support\Fixtures;
 use Axitrace\PrestaShop\Tests\Unit\Support\PurchasePipeline;
@@ -222,6 +225,48 @@ final class RefundHookTest extends TestCase
         self::assertSame('refunded', $pipeline->db->orders[$order->idOrder]['refund_state']);
     }
 
+    public function testAStatusRefundWithoutAnyKnownTotalIsNotSentAndTheOrderIsNotMarked(): void
+    {
+        $pipeline = self::pipeline();
+        $order = self::replayStatus($pipeline, '9.2.0', 'k_paid_at_creation');
+        $pipeline->db->orders[$order->idOrder]['purchase_snapshot'] = null;
+        unset($pipeline->reader->orders[$order->idOrder]);
+
+        $pipeline->status($order->idOrder, 7, 0);
+
+        self::assertSame([], self::refunds($pipeline));
+        self::assertNull($pipeline->db->orders[$order->idOrder]['refund_state'] ?? null, 'never marked refunded without a send');
+        self::assertSame(RefundHook::FAILURE_CODE, $pipeline->lastFailure()['code'] ?? null);
+        self::assertStringContainsString('refunded amount is unknown', $pipeline->lastFailure()['message']);
+    }
+
+    public function testAStatusRefundFallingBackToTheCurrentOrderTotalSaysSo(): void
+    {
+        $pipeline = self::pipeline();
+        $order = self::replayStatus($pipeline, '9.2.0', 'k_paid_at_creation');
+        $pipeline->db->orders[$order->idOrder]['purchase_snapshot'] = null;
+
+        $pipeline->status($order->idOrder, 7, 0);
+
+        self::assertSame($order->totalPaidTaxIncl, self::refunds($pipeline)[0]['amount'] ?? null);
+        self::assertStringContainsString('computed from the current order total', implode("\n", $pipeline->logger->errors));
+    }
+
+    public function testARefundWithoutACurrencyIsNeverSent(): void
+    {
+        $pipeline = self::pipeline();
+        $order = self::replayStatus($pipeline, '9.2.0', 'k_paid_at_creation');
+        $pipeline->db->orders[$order->idOrder]['purchase_snapshot'] = null;
+        $pipeline->reader->orders[$order->idOrder] = new PurchaseOrder(...['currency' => ''] + get_object_vars($order));
+
+        $pipeline->status($order->idOrder, 7, 0);
+
+        self::assertSame([], self::refunds($pipeline));
+        self::assertSame([], $pipeline->db->refunds, 'nothing reserved');
+        self::assertNull($pipeline->db->orders[$order->idOrder]['refund_state'] ?? null);
+        self::assertStringContainsString('the currency is unknown', $pipeline->lastFailure()['message'] ?? '');
+    }
+
     public function testOtherStatesOfASentOrderAreNotRefunds(): void
     {
         $pipeline = self::pipeline();
@@ -396,17 +441,32 @@ final class RefundHookTest extends TestCase
         self::assertSame($refunds[0]['refundId'], $refunds[1]['refundId'], 'same refund id: AxiTrace deduplicates');
     }
 
-    public function testRejectedSecretKeyIsRecordedAndNotQueued(): void
+    public function testRejectedSecretKeyParksTheRefundUntilRetryNow(): void
     {
         $pipeline = self::pipeline();
         $order = self::sentCodOrder($pipeline, '8.1.7');
         $pipeline->transport->willAnswer(new HttpResponse(401, [], 'Invalid secret key for this workspace'));
         $pipeline->status($order->idOrder, 6, 0);
 
-        self::assertSame([], $pipeline->db->failedEvents);
-        self::assertSame([], $pipeline->db->refunds, 'released: it never reached AxiTrace');
+        $rows = array_values($pipeline->db->failedEvents);
+        self::assertCount(1, $rows, 'parked, not dropped');
+        self::assertSame(FailedEventQueue::STATUS_PARKED, $rows[0]['status']);
+        self::assertSame('refund', $rows[0]['endpoint']);
+        self::assertCount(1, $pipeline->db->refunds, 'the reservation is kept: the refund is pending, not forgotten');
+        self::assertNull(array_values($pipeline->db->refunds)[0]['sent_at']);
         self::assertSame(PurchaseSender::FAILURE_SECRET_KEY_REJECTED, $pipeline->lastFailure()['code'] ?? null);
         self::assertStringNotContainsString(PurchasePipeline::SK, (string) json_encode($pipeline->store->values));
+        self::assertStringNotContainsString(PurchasePipeline::SK, (string) json_encode($pipeline->db->failedEvents));
+
+        // Key fixed, "Retry now": delivered with the same refund id, ledger marked sent.
+        $pipeline->transport->willAnswer(new HttpResponse(202));
+        $report = (new DeliveryLog($pipeline->queue(), $pipeline->lazyTrigger(), new EchoTranslator(), $pipeline->clock))->retryNow();
+        self::assertSame(1, $report?->delivered);
+        self::assertSame([], $pipeline->db->failedEvents);
+        self::assertNotNull(array_values($pipeline->db->refunds)[0]['sent_at']);
+        $refunds = self::refunds($pipeline);
+        self::assertSame($refunds[0]['refundId'], $refunds[count($refunds) - 1]['refundId']);
+        self::assertNotContains(PurchaseSender::FAILURE_SECRET_KEY_REJECTED, array_column($pipeline->failures()->all(ShopScope::shop(1, 1)), 'code'), 'a keyed success clears the rejected key');
     }
 
     public function testRefusedRefundIsDeadInTheDeliveryLog(): void

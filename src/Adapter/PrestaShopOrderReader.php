@@ -75,6 +75,11 @@ final class PrestaShopOrderReader implements OrderReaderInterface
             );
         }
 
+        if (!\Validate::isLoadedObject($currency) || trim((string) $currency->iso_code) === '') {
+            // Never a purchase or refund without its currency: the caller records the failure.
+            throw new \RuntimeException(sprintf('order %d: its currency (id_currency %d) could not be read', (int) $order->id, (int) $order->id_currency));
+        }
+
         return new PurchaseOrder(
             (int) $order->id,
             $idShop,
@@ -82,7 +87,7 @@ final class PrestaShopOrderReader implements OrderReaderInterface
             (int) $order->id_cart,
             (string) $order->reference,
             (string) $order->module,
-            \Validate::isLoadedObject($currency) ? strtoupper((string) $currency->iso_code) : '',
+            strtoupper(trim((string) $currency->iso_code)),
             (float) $order->total_paid_tax_incl,
             (float) $order->total_paid_tax_excl,
             (float) $order->total_shipping_tax_incl,

@@ -8,6 +8,13 @@ use Axitrace\PrestaShop\Retry\CronResponder;
 use Axitrace\PrestaShop\Tests\Unit\Support\Fixtures;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeHttpTransport;
 use Axitrace\PrestaShop\Tests\Unit\Support\PurchasePipeline;
+use Axitrace\PrestaShop\Config\ShopScope;
+use Axitrace\PrestaShop\Purchase\PurchaseLedger;
+use Axitrace\PrestaShop\Retry\LazyTrigger;
+use Axitrace\PrestaShop\Retry\RetryRunner;
+use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
+use Axitrace\PrestaShop\Tests\Unit\Support\FailingStatementDb;
+use Axitrace\PrestaShop\Tests\Unit\Support\FakeShopGroupResolver;
 use PHPUnit\Framework\TestCase;
 
 final class LazyTriggerTest extends TestCase
@@ -87,8 +94,8 @@ final class LazyTriggerTest extends TestCase
         self::assertSame(['status' => 403, 'body' => "Forbidden\n"], $cron->respond(false));
         self::assertCount(1, $pipeline->transport->requests);
 
-        self::assertSame(['status' => 200, 'body' => "processed=1 delivered=1 failed=0 dead=0 dropped=0\n"], $cron->respond(true));
-        self::assertSame(['status' => 200, 'body' => "processed=0 delivered=0 failed=0 dead=0 dropped=0\n"], $cron->respond(true));
+        self::assertSame(['status' => 200, 'body' => "processed=1 delivered=1 failed=0 dead=0 parked=0\n"], $cron->respond(true));
+        self::assertSame(['status' => 200, 'body' => "processed=0 delivered=0 failed=0 dead=0 parked=0\n"], $cron->respond(true));
     }
 
     public function testCronWhileLockedSaysSo(): void
@@ -97,5 +104,32 @@ final class LazyTriggerTest extends TestCase
         $pipeline->lock()->acquire($pipeline->clock->now);
 
         self::assertSame(['status' => 200, 'body' => "processed=0 locked=1\n"], (new CronResponder($pipeline->lazyTrigger()))->respond(true));
+    }
+
+    public function testAFailedRunIsRecordedForTheBackOfficeNotOnlyLogged(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $db = new FailingStatementDb($pipeline->db, 'ORDER BY `next_attempt_at`, `id` LIMIT');
+        $runner = new RetryRunner(
+            $pipeline->queue($db),
+            $pipeline->sender(),
+            $pipeline->refundSender(),
+            new PurchaseLedger($pipeline->db),
+            $pipeline->refundLedger(),
+            new CartSnapshotRepository($pipeline->db),
+            new FakeShopGroupResolver(),
+            $pipeline->failures(),
+            $pipeline->logger,
+            $pipeline->clock,
+        );
+        $trigger = new LazyTrigger($pipeline->queue(), $pipeline->lock(), $runner, $pipeline->scheduler, $pipeline->failures(), $pipeline->logger, $pipeline->clock);
+
+        $report = $trigger->runLocked(RetryRunner::CRON_BATCH, 1.0);
+
+        self::assertSame(0, $report?->processed);
+        $failure = $pipeline->failures()->last(ShopScope::context());
+        self::assertSame(LazyTrigger::FAILURE_CODE, $failure['code'] ?? null);
+        self::assertStringContainsString('the retry run failed (RuntimeException: Database statement failed: Deadlock', $failure['message']);
+        self::assertTrue($pipeline->lock()->acquire($pipeline->clock->now()), 'the lock was released');
     }
 }

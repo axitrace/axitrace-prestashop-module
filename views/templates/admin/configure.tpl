@@ -19,6 +19,13 @@
     </tbody>
   </table>
   <p class="help-block">{l s='Shown for the shop selected in the shop context selector. Errors are also written to Advanced Parameters > Logs; search for AxiTrace.' d='Modules.Axitrace.Admin'}</p>
+  {if $axitrace_has_failures}
+    <form method="post" action="{$axitrace_retry_url|escape:'html':'UTF-8'}">
+      <input type="hidden" name="axitrace_dismiss_token" value="{$axitrace_dismiss_token|escape:'html':'UTF-8'}">
+      <button type="submit" name="submitAxitraceDismissFailures" value="1" class="btn btn-default">{l s='Dismiss failures' d='Modules.Axitrace.Admin'}</button>
+      <span class="help-block">{l s='Clears the failures listed above once you have fixed their cause. A failure that happens again is shown again.' d='Modules.Axitrace.Admin'}</span>
+    </form>
+  {/if}
 </div>
 {if $axitrace_cron_url}
   <div class="panel" id="axitrace-cron">

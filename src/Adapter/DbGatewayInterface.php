@@ -33,7 +33,17 @@ interface DbGatewayInterface
      */
     public function select(string $sql): array;
 
+    /**
+     * Escapes display text for a quoted SQL literal. This is PrestaShop's pSQL(): it also strips
+     * HTML tags, so it must never be used for JSON or other data stored verbatim.
+     */
     public function escape(string $value): string;
+
+    /**
+     * Escapes a value stored verbatim (JSON payloads, snapshots): quotes only, '<' and '>' kept.
+     * pSQL($value, true) in PrestaShop.
+     */
+    public function escapeRaw(string $value): string;
 
     /** Escapes a value for use inside a LIKE pattern (also escapes `%` and `_`). */
     public function escapeLike(string $value): string;

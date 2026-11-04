@@ -11,6 +11,7 @@ if (!defined('_PS_VERSION_')) {
 use Axitrace\PrestaShop\Adapter\ClockInterface;
 use Axitrace\PrestaShop\Adapter\LoggerInterface;
 use Axitrace\PrestaShop\Adapter\ShopGroupResolverInterface;
+use Axitrace\PrestaShop\Config\FailureRecorder;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Http\DeliveryOutcome;
 use Axitrace\PrestaShop\Http\DeliveryResult;
@@ -28,11 +29,13 @@ use Axitrace\PrestaShop\Snapshot\CartSnapshotRepository;
  * now: endpoint, secret key (A27). A purchase goes through {@see PurchaseSender} (same rules as the
  * first attempt: costs only with a key, keyless resend when the key is rejected); a delivered
  * purchase marks its order SENT. A refund goes through {@see RefundSender}: it needs the secret
- * key (without one the attempt fails), a rejected key drops the row with a warning (it can never
- * be delivered with that key), and a delivered refund marks its `axitrace_refund` row sent.
+ * key (without one the attempt fails), a rejected key parks the row (it waits in the delivery log
+ * for "Retry now" after the merchant fixed the key), and a delivered refund marks its
+ * `axitrace_refund` row sent.
  *
- * Also prunes dead rows and cart snapshots older than 30 days, and refreshes AXITRACE_RETRY_DUE_AT.
- * Never throws for a row: a row's failure is counted as a failed attempt.
+ * Also prunes dead rows and cart snapshots older than 30 days, and refreshes AXITRACE_RETRY_DUE_AT,
+ * even when a row or the batch failed. Never throws for a row: a row whose handling threw is
+ * counted as failed, logged and recorded ({@see FAILURE_CODE}), and the batch goes on.
  */
 final class RetryRunner
 {
@@ -40,6 +43,8 @@ final class RetryRunner
     public const LAZY_BUDGET_SECONDS = 1.5;
     public const CRON_BATCH = 200;
     public const CRON_BUDGET_SECONDS = 25.0;
+
+    public const FAILURE_CODE = 'retry_row_failed';
 
     public function __construct(
         private readonly FailedEventQueue $queue,
@@ -49,6 +54,7 @@ final class RetryRunner
         private readonly RefundLedger $refundLedger,
         private readonly CartSnapshotRepository $cartSnapshots,
         private readonly ShopGroupResolverInterface $shopGroups,
+        private readonly FailureRecorder $failures,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
     ) {
@@ -57,41 +63,50 @@ final class RetryRunner
     public function run(int $batch, float $budgetSeconds): RetryReport
     {
         $start = $this->clock->now();
-        $processed = $delivered = $failed = $dead = $dropped = 0;
+        $processed = $delivered = $failed = $dead = $parked = 0;
         $exhausted = false;
 
-        foreach ($this->queue->due($start, $batch) as $event) {
-            if (self::elapsed($start, $this->clock->now()) >= $budgetSeconds) {
-                $exhausted = true;
-                break;
-            }
-            ++$processed;
+        try {
+            foreach ($this->queue->due($start, $batch) as $event) {
+                if (self::elapsed($start, $this->clock->now()) >= $budgetSeconds) {
+                    $exhausted = true;
+                    break;
+                }
+                ++$processed;
 
-            switch ($this->retry($event)) {
-                case 'delivered':
-                    ++$delivered;
-                    break;
-                case 'dead':
-                    ++$dead;
-                    break;
-                case 'dropped':
-                    ++$dropped;
-                    break;
-                default:
-                    ++$failed;
+                try {
+                    $outcome = $this->retry($event);
+                } catch (\Throwable $e) {
+                    $this->rowFailed($event, $e);
+                    $outcome = 'failed';
+                }
+
+                switch ($outcome) {
+                    case 'delivered':
+                        ++$delivered;
+                        break;
+                    case 'dead':
+                        ++$dead;
+                        break;
+                    case 'parked':
+                        ++$parked;
+                        break;
+                    default:
+                        ++$failed;
+                }
             }
+        } finally {
+            $now = $this->clock->now();
+            $this->queue->pruneDead($now);
+            $this->cartSnapshots->prune($now);
+            $this->queue->refreshDueAt();
         }
 
-        $now = $this->clock->now();
-        $this->queue->pruneDead($now);
-        $this->cartSnapshots->prune($now);
-        $this->queue->refreshDueAt();
-
-        return new RetryReport($processed, $delivered, $failed, $dead, $dropped, $exhausted);
+        return new RetryReport($processed, $delivered, $failed, $dead, $parked, $exhausted);
     }
 
     /**
-     * @return 'delivered'|'failed'|'dead'|'dropped'
+     * @return 'delivered'|'failed'|'dead'|'parked'
      */
     private function retry(FailedEvent $event): string
     {
@@ -104,16 +119,15 @@ final class RetryRunner
         }
 
         try {
-            $scope = ShopScope::shop($this->shopGroups->groupOf($event->idShop), $event->idShop);
             $result = $event->endpoint === FailedEventQueue::ENDPOINT_REFUND
-                ? $this->refunds->send($payload, $scope)
-                : $this->purchases->send($payload, $scope);
+                ? $this->refunds->send($payload, $this->scopeOf($event))
+                : $this->purchases->send($payload, $this->scopeOf($event));
         } catch (SecretKeyRejectedException) {
-            $this->queue->delete($event->id);
-            $this->releaseRefund($event, $payload);
-            $this->logger->error(sprintf('the refund %s was dropped: AxiTrace rejected the secret key, so it can never be delivered with it.', $event->eventId));
+            // Kept, with its axitrace_refund reservation: "Retry now" sends it once the key is fixed.
+            $this->queue->markParked($event, 'AxiTrace rejected the secret key (HTTP 401): enter a valid secret key, then click Retry now.', $now);
+            $this->logger->error(sprintf('the refund %s waits for a valid secret key: AxiTrace rejected the current one.', $event->eventId));
 
-            return 'dropped';
+            return 'parked';
         } catch (\Throwable $e) {
             $result = new DeliveryResult(DeliveryOutcome::Retry, null, sprintf('%s: %s', $e::class, mb_substr($e->getMessage(), 0, 200)));
         }
@@ -139,6 +153,27 @@ final class RetryRunner
         }
 
         return $isDead ? 'dead' : 'failed';
+    }
+
+    private function scopeOf(FailedEvent $event): ShopScope
+    {
+        return ShopScope::shop($this->shopGroups->groupOf($event->idShop), $event->idShop);
+    }
+
+    /** A row whose handling threw (database, ledger): logged and recorded; the row stays as it was. */
+    private function rowFailed(FailedEvent $event, \Throwable $e): void
+    {
+        $message = sprintf('retrying the %s %s failed (%s: %s); it is tried again at the next run.', $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? 'refund' : 'purchase', $event->eventId, $e::class, $e->getMessage());
+        try {
+            try {
+                $scope = $this->scopeOf($event);
+            } catch (\Throwable) {
+                $scope = ShopScope::context();
+            }
+            $this->failures->record(self::FAILURE_CODE, $message, $scope);
+        } catch (\Throwable $recordError) {
+            $this->logger->error(sprintf('%s; recording the failure failed too (%s: %s)', $message, $recordError::class, $recordError->getMessage()));
+        }
     }
 
     /**

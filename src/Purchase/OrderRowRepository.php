@@ -46,7 +46,7 @@ final class OrderRowRepository
             $idShopGroup,
             $this->db->escape(mb_substr($reference, 0, 64)),
             $this->db->escape($eventId),
-            $snapshot === null ? 'NULL' : "'" . $this->db->escape(SnapshotBuilder::encode($snapshot)) . "'",
+            $snapshot === null ? 'NULL' : "'" . $this->db->escapeRaw(SnapshotBuilder::encode($snapshot)) . "'",
             $now->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
         ));
     }
@@ -71,7 +71,7 @@ final class OrderRowRepository
         $this->db->update(sprintf(
             "UPDATE `%saxitrace_order` SET `purchase_snapshot` = '%s' WHERE `id_order` = %d",
             $this->db->prefix(),
-            $this->db->escape($purchase->encode()),
+            $this->db->escapeRaw($purchase->encode()),
             $idOrder,
         ));
     }
@@ -98,7 +98,7 @@ final class OrderRowRepository
         $this->db->update(sprintf(
             'UPDATE `%saxitrace_order` SET `snapshot` = %s WHERE `id_order` = %d',
             $this->db->prefix(),
-            $snapshot === null ? 'NULL' : "'" . $this->db->escape(SnapshotBuilder::encode($snapshot)) . "'",
+            $snapshot === null ? 'NULL' : "'" . $this->db->escapeRaw(SnapshotBuilder::encode($snapshot)) . "'",
             $idOrder,
         ));
     }

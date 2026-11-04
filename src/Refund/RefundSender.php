@@ -28,7 +28,8 @@ use Axitrace\PrestaShop\Purchase\PurchaseSender;
  * booking the refund there) and records the outcome for the back office.
  *
  * Refunds are profit data: the endpoint accepts the secret key only, so without a key nothing is
- * sent, and a rejected key is never retried (it cannot succeed with the same key).
+ * sent, and a rejected key is never retried on its own (it cannot succeed with the same key): the
+ * caller parks the refund for "Retry now".
  */
 final class RefundSender
 {
@@ -68,7 +69,7 @@ final class RefundSender
             // Never the key itself in a message, not even a prefix.
             $this->failures->record(
                 PurchaseSender::FAILURE_SECRET_KEY_REJECTED,
-                sprintf('AxiTrace rejected the secret key (HTTP 401) for the refund %s. Check that it is the secret key of the same workspace as the public key; refunds are not reported until it is fixed.', $refundId),
+                sprintf('AxiTrace rejected the secret key (HTTP 401) for the refund %s. Check that it is the secret key of the same workspace as the public key; the refund waits in the delivery log until you enter a valid key and click Retry now.', $refundId),
                 $scope,
             );
 

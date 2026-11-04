@@ -11,6 +11,8 @@ if (!defined('_PS_VERSION_')) {
 use Axitrace\PrestaShop\Adapter\ClockInterface;
 use Axitrace\PrestaShop\Adapter\DeferredTaskSchedulerInterface;
 use Axitrace\PrestaShop\Adapter\LoggerInterface;
+use Axitrace\PrestaShop\Config\FailureRecorder;
+use Axitrace\PrestaShop\Config\ShopScope;
 
 /**
  * Retries without a system cron (A25): ordinary storefront (`displayHeader`) and back-office
@@ -24,11 +26,14 @@ use Axitrace\PrestaShop\Adapter\LoggerInterface;
  */
 final class LazyTrigger
 {
+    public const FAILURE_CODE = 'retry_run';
+
     public function __construct(
         private readonly FailedEventQueue $queue,
         private readonly RetryLock $lock,
         private readonly RetryRunner $runner,
         private readonly DeferredTaskSchedulerInterface $scheduler,
+        private readonly FailureRecorder $failures,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
     ) {
@@ -67,7 +72,7 @@ final class LazyTrigger
                 return null;
             }
         } catch (\Throwable $e) {
-            $this->logger->error(sprintf('the retry lock could not be taken (%s: %s)', $e::class, $e->getMessage()));
+            $this->failed(sprintf('the retry lock could not be taken (%s: %s); queued deliveries are retried at the next run.', $e::class, $e->getMessage()));
 
             return null;
         }
@@ -75,7 +80,7 @@ final class LazyTrigger
         try {
             return $this->runner->run($batch, $budgetSeconds);
         } catch (\Throwable $e) {
-            $this->logger->error(sprintf('the retry run failed (%s: %s)', $e::class, $e->getMessage()));
+            $this->failed(sprintf('the retry run failed (%s: %s); queued deliveries are retried at the next run.', $e::class, $e->getMessage()));
 
             return new RetryReport();
         } finally {
@@ -84,6 +89,16 @@ final class LazyTrigger
             } catch (\Throwable $e) {
                 $this->logger->error(sprintf('the retry lock could not be released (%s: %s); it expires after %d s', $e::class, $e->getMessage(), RetryLock::TTL_SECONDS));
             }
+        }
+    }
+
+    /** Logged and shown in the back office ("Last failure"), never only in the PrestaShop log. */
+    private function failed(string $message): void
+    {
+        try {
+            $this->failures->record(self::FAILURE_CODE, $message, ShopScope::context());
+        } catch (\Throwable $e) {
+            $this->logger->error(sprintf('%s; recording the failure failed too (%s: %s)', $message, $e::class, $e->getMessage()));
         }
     }
 }

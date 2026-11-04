@@ -12,11 +12,19 @@ final class SpyLogger implements LoggerInterface
     public array $errors = [];
 
     /** @var list<string> */
+    public array $warnings = [];
+
+    /** @var list<string> */
     public array $infos = [];
 
     public function error(string $message): void
     {
         $this->errors[] = $message;
+    }
+
+    public function warning(string $message): void
+    {
+        $this->warnings[] = $message;
     }
 
     public function info(string $message): void

@@ -19,8 +19,8 @@ use Axitrace\PrestaShop\Retry\FailedEventQueue;
 
 /**
  * "Connection health" on the configuration page, for the shop selected in the back office: where
- * events go, the last accepted delivery (AXITRACE_LAST_SUCCESS), the last failure
- * (AXITRACE_LAST_FAILURE), whether AxiTrace keeps the product costs (secret key state and
+ * events go, the last accepted delivery (AXITRACE_LAST_SUCCESS), every recorded failure, newest
+ * first (AXITRACE_LAST_FAILURE, one entry per failure code), whether AxiTrace keeps the product costs (secret key state and
  * AXITRACE_COST_KEY_STATE), the retry queue and the module, PrestaShop and PHP versions (A14). The
  * error banners (public or secret key rejected, secret key to re-enter, developer override,
  * refused tracking domain) are {@see ConfigPageNotices}.
@@ -30,6 +30,9 @@ final class HealthPanel
     public const OK = 'ok';
     public const WARNING = 'warning';
     public const ERROR = 'error';
+
+    /** "Dismiss failures": a back-office POST carrying the module's action token. */
+    public const SUBMIT_DISMISS = 'submitAxitraceDismissFailures';
 
     public function __construct(
         private readonly DeliveryHealth $health,
@@ -49,7 +52,6 @@ final class HealthPanel
         $d = 'Modules.Axitrace.Admin';
 
         $lastSuccess = $this->health->lastSuccess($scope);
-        $lastFailure = $this->failures->last($scope);
         $counts = $this->queue->counts();
 
         return [
@@ -63,18 +65,16 @@ final class HealthPanel
                 'value' => $lastSuccess !== '' ? $lastSuccess : $t->trans('None yet', [], $d),
                 'state' => $lastSuccess !== '' ? self::OK : self::WARNING,
             ],
-            [
-                'label' => $t->trans('Last failure', [], $d),
-                'value' => $lastFailure === null
-                    ? $t->trans('None', [], $d)
-                    : $t->trans('%time%: %message%', ['%time%' => $lastFailure['at'], '%message%' => $lastFailure['message']], $d),
-                'state' => $lastFailure === null ? self::OK : self::ERROR,
-            ],
+            ...$this->failureRows($scope),
             $this->costRow($scope, $secretKey),
             [
                 'label' => $t->trans('Delivery queue', [], $d),
-                'value' => $t->trans('%queued% waiting for a retry, %dead% failed', ['%queued%' => $counts['queued'], '%dead%' => $counts['dead']], $d),
-                'state' => $counts['dead'] > 0 ? self::ERROR : ($counts['queued'] > 0 ? self::WARNING : self::OK),
+                'value' => $t->trans('%queued% waiting for a retry, %parked% waiting for a valid secret key, %dead% failed', [
+                    '%queued%' => $counts['queued'],
+                    '%parked%' => $counts['parked'],
+                    '%dead%' => $counts['dead'],
+                ], $d),
+                'state' => $counts['dead'] > 0 || $counts['parked'] > 0 ? self::ERROR : ($counts['queued'] > 0 ? self::WARNING : self::OK),
             ],
             [
                 'label' => $t->trans('Versions', [], $d),
@@ -86,6 +86,39 @@ final class HealthPanel
                 'state' => self::OK,
             ],
         ];
+    }
+
+    /** True when at least one failure is recorded: the panel then offers "Dismiss failures". */
+    public function hasFailures(ShopScope $scope): bool
+    {
+        return $this->failures->all($scope) !== [];
+    }
+
+    /**
+     * "Last failure" (the newest), then one "Earlier failure" row per other recorded failure code.
+     *
+     * @return list<array{label: string, value: string, state: string}>
+     */
+    private function failureRows(ShopScope $scope): array
+    {
+        $t = $this->translator;
+        $d = 'Modules.Axitrace.Admin';
+
+        $failures = $this->failures->all($scope);
+        if ($failures === []) {
+            return [['label' => $t->trans('Last failure', [], $d), 'value' => $t->trans('None', [], $d), 'state' => self::OK]];
+        }
+
+        $rows = [];
+        foreach ($failures as $i => $failure) {
+            $rows[] = [
+                'label' => $i === 0 ? $t->trans('Last failure', [], $d) : $t->trans('Earlier failure', [], $d),
+                'value' => $t->trans('%time%: %message%', ['%time%' => $failure['at'], '%message%' => $failure['message']], $d),
+                'state' => self::ERROR,
+            ];
+        }
+
+        return $rows;
     }
 
     /**

@@ -32,6 +32,12 @@ final class IngestionClient
     /** Set by AxiTrace on a 2xx to a request whose secret key did not verify: costs were dropped. */
     public const COST_KEY_HEADER = 'x-axitrace-cost-key';
 
+    /**
+     * Body cap of POST /v1/plugin/pixel (ingestion-api pluginPixelMaxBodyBytes). A larger body is
+     * a 413, recorded as refused and never retried; a 200-line order stays far below it.
+     */
+    public const MAX_PIXEL_BODY_BYTES = 512 * 1024;
+
     public const CONNECT_TIMEOUT_SECONDS = 1;
     public const TOTAL_TIMEOUT_SECONDS = 2;
 

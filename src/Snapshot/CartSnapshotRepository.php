@@ -59,7 +59,7 @@ final class CartSnapshotRepository
             $this->db->prefix(),
             $idCart,
             $idShop,
-            $this->db->escape(SnapshotBuilder::encode($snapshot)),
+            $this->db->escapeRaw(SnapshotBuilder::encode($snapshot)),
             $this->db->escape($hash),
             $now->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
         ));

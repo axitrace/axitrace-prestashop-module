@@ -34,6 +34,8 @@ final class PurchaseSender
     public const FAILURE_PUBLIC_KEY_REJECTED = 'public_key_rejected';
     public const FAILURE_PAYLOAD_REJECTED = 'payload_rejected';
     public const FAILURE_DELIVERY = 'delivery_failed';
+    /** A purchase neither delivered nor queued (recorded by the status hook). */
+    public const FAILURE_QUEUE_WRITE = 'queue_write_failed';
 
     public function __construct(
         private readonly IngestionClient $client,
@@ -84,6 +86,7 @@ final class PurchaseSender
                 $this->health->recordSuccess($scope, $keyUsed, $result->costKeyHeader);
                 $this->failures->clear(self::FAILURE_PUBLIC_KEY_REJECTED, $scope);
                 $this->failures->clear(self::FAILURE_DELIVERY, $scope);
+                $this->failures->clear(self::FAILURE_QUEUE_WRITE, $scope);
                 if ($keyUsed) {
                     $this->failures->clear(self::FAILURE_SECRET_KEY_REJECTED, $scope);
                 }

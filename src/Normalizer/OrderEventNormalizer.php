@@ -9,6 +9,7 @@ if (!defined('_PS_VERSION_')) {
 }
 
 use Axitrace\PrestaShop\Adapter\ClockInterface;
+use Axitrace\PrestaShop\Adapter\LoggerInterface;
 use Axitrace\PrestaShop\Consent\ConsentGate;
 use Axitrace\PrestaShop\Purchase\PurchaseLine;
 use Axitrace\PrestaShop\Purchase\PurchaseOrder;
@@ -69,6 +70,7 @@ final class OrderEventNormalizer
         private readonly PlatformInfo $platform,
         private readonly ClockInterface $clock,
         private readonly PurchaseCostResolver $costs,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -149,13 +151,17 @@ final class OrderEventNormalizer
         return $params;
     }
 
-    /** `orders.date_add` in UTC, RFC 3339 with a Z suffix; the current time if it is unusable. */
+    /**
+     * `orders.date_add` in UTC, RFC 3339 with a Z suffix; the current time if it is unusable. An
+     * invalid shop time zone is logged and read as UTC.
+     */
     public function timestamp(PurchaseOrder $order): string
     {
         $utc = new \DateTimeZone('UTC');
         try {
             $zone = new \DateTimeZone($order->timezone !== '' ? $order->timezone : 'UTC');
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            $this->logger->warning(sprintf('order %d: PS_TIMEZONE "%s" is not a valid time zone (%s); the order date is read as UTC. Fix it in International > Localization.', $order->idOrder, mb_substr($order->timezone, 0, 64), $e->getMessage()));
             $zone = $utc;
         }
 
@@ -174,6 +180,11 @@ final class OrderEventNormalizer
      */
     private function orderData(PurchaseOrder $order, ConversionValueBasis $basis, array $snapshot, bool $withCosts): array
     {
+        if (preg_match('/^[A-Z]{3}$/', $order->currency) !== 1) {
+            // Never a purchase without its currency: AxiTrace would book it in the workspace currency.
+            throw new \RuntimeException(sprintf('order %d: the currency "%s" is not an ISO 4217 code, so the purchase is not sent', $order->idOrder, mb_substr($order->currency, 0, 16)));
+        }
+
         $money = ['amount' => self::conversionValue($order, $basis), 'currency' => $order->currency];
 
         $products = [];

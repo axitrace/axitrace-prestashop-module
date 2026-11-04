@@ -253,6 +253,7 @@ final class ModuleServices
             new RetryLock($this->db(), $this->store()),
             $this->retryRunner(),
             self::$scheduler ??= new ShutdownScheduler(),
+            $this->failureRecorder(),
             new PrestaShopLoggerAdapter(),
             new SystemClock(),
         );
@@ -273,6 +274,7 @@ final class ModuleServices
             $this->refundLedger(),
             $this->cartSnapshots(),
             new PrestaShopShopGroupResolver(),
+            $this->failureRecorder(),
             new PrestaShopLoggerAdapter(),
             new SystemClock(),
         );
@@ -335,6 +337,7 @@ final class ModuleServices
             $this->platformInfo(),
             new SystemClock(),
             new PurchaseCostResolver(),
+            new PrestaShopLoggerAdapter(),
         );
     }
 

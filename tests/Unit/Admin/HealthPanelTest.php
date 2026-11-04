@@ -53,7 +53,7 @@ final class HealthPanelTest extends TestCase
         self::assertSame(['value' => 'None yet', 'state' => 'warning'], $rows['Last successful delivery']);
         self::assertSame(['value' => 'None', 'state' => 'ok'], $rows['Last failure']);
         self::assertSame(['value' => 'Not sent: no secret key is saved.', 'state' => 'warning'], $rows['Product costs and refunds']);
-        self::assertSame(['value' => '0 waiting for a retry, 0 failed', 'state' => 'ok'], $rows['Delivery queue']);
+        self::assertSame(['value' => '0 waiting for a retry, 0 waiting for a valid secret key, 0 failed', 'state' => 'ok'], $rows['Delivery queue']);
         self::assertSame(['value' => 'Module 0.1.0, PrestaShop 9.2.0, PHP 8.5.12', 'state' => 'ok'], $rows['Versions']);
     }
 
@@ -73,7 +73,45 @@ final class HealthPanelTest extends TestCase
         self::assertSame('error', $rows['Last failure']['state']);
         self::assertStringContainsString('could not be delivered (HTTP 503)', $rows['Last failure']['value']);
         self::assertSame(['value' => 'Accepted by AxiTrace.', 'state' => 'ok'], $rows['Product costs and refunds']);
-        self::assertSame(['value' => '1 waiting for a retry, 1 failed', 'state' => 'error'], $rows['Delivery queue']);
+        self::assertSame(['value' => '1 waiting for a retry, 0 waiting for a valid secret key, 1 failed', 'state' => 'error'], $rows['Delivery queue']);
+    }
+
+    public function testEveryRecordedFailureIsListedNewestFirstAndClearingOneKeepsTheOther(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $scope = ShopScope::shop(1, 1);
+        $panel = self::panel($pipeline);
+        $endpoints = new ResolvedEndpoints(self::ENDPOINTS, self::ENDPOINTS);
+        $pipeline->failures()->record('payload_rejected', 'AxiTrace refused the purchase of order 7 (HTTP 400); it is not retried.', $scope);
+        $pipeline->clock->now = $pipeline->clock->now->modify('+1 minute');
+        $pipeline->failures()->record('delivery_failed', 'The purchase of order 8 could not be delivered (HTTP 503); it is retried later.', $scope);
+
+        $rows = array_values(array_filter($panel->rows($scope, $endpoints, SecretKeyState::Present), static fn (array $r): bool => str_ends_with($r['label'], 'failure')));
+        self::assertSame(['Last failure', 'Earlier failure'], array_column($rows, 'label'));
+        self::assertStringContainsString('order 8', $rows[0]['value']);
+        self::assertStringContainsString('order 7', $rows[1]['value']);
+        self::assertTrue($panel->hasFailures($scope));
+
+        // A delivered purchase clears delivery_failed only: the refused payload stays visible.
+        $pipeline->failures()->clear('delivery_failed', $scope);
+        $rows = self::byLabel($panel->rows($scope, $endpoints, SecretKeyState::Present));
+        self::assertSame('error', $rows['Last failure']['state']);
+        self::assertStringContainsString('order 7', $rows['Last failure']['value']);
+        self::assertArrayNotHasKey('Earlier failure', $rows);
+
+        $pipeline->failures()->clearAll($scope);
+        self::assertSame(['value' => 'None', 'state' => 'ok'], self::byLabel($panel->rows($scope, $endpoints, SecretKeyState::Present))['Last failure']);
+        self::assertFalse($panel->hasFailures($scope));
+    }
+
+    public function testAParkedRefundMakesTheQueueRowAnError(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $pipeline->queue()->park('prestashop:5:slip:1', 'refund', 1, ['refundId' => 'prestashop:5:slip:1'], 'secret key rejected', $pipeline->clock->now());
+
+        $rows = self::byLabel(self::panel($pipeline)->rows(ShopScope::shop(1, 1), new ResolvedEndpoints(self::ENDPOINTS, self::ENDPOINTS), SecretKeyState::Present));
+
+        self::assertSame(['value' => '0 waiting for a retry, 1 waiting for a valid secret key, 0 failed', 'state' => 'error'], $rows['Delivery queue']);
     }
 
     public function testCostKeyStates(): void

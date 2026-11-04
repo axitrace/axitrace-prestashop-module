@@ -16,7 +16,7 @@ final class RetryReport
         public readonly int $delivered = 0,
         public readonly int $failed = 0,
         public readonly int $dead = 0,
-        public readonly int $dropped = 0,
+        public readonly int $parked = 0,
         public readonly bool $budgetExhausted = false,
     ) {
     }
@@ -24,12 +24,12 @@ final class RetryReport
     public function summary(): string
     {
         return sprintf(
-            'processed=%d delivered=%d failed=%d dead=%d dropped=%d%s',
+            'processed=%d delivered=%d failed=%d dead=%d parked=%d%s',
             $this->processed,
             $this->delivered,
             $this->failed,
             $this->dead,
-            $this->dropped,
+            $this->parked,
             $this->budgetExhausted ? ' budget_exhausted=1' : '',
         );
     }

@@ -26,11 +26,11 @@ final class ConfigPageNotices
     }
 
     /**
-     * @param array{at: string, code: string, message: string}|null $lastFailure {@see \Axitrace\PrestaShop\Config\FailureRecorder::last()}
+     * @param list<array{at: string, code: string, message: string}> $failures {@see \Axitrace\PrestaShop\Config\FailureRecorder::all()}
      *
      * @return list<string> translated plain-text messages, rendered as error banners
      */
-    public function errors(ResolvedEndpoints $endpoints, SecretKeyResult $secretKey, ?array $lastFailure = null): array
+    public function errors(ResolvedEndpoints $endpoints, SecretKeyResult $secretKey, array $failures = []): array
     {
         $t = $this->translator;
         $errors = [];
@@ -53,12 +53,12 @@ final class ConfigPageNotices
             $errors[] = $t->trans('The saved secret key can no longer be decrypted, most likely because the shop encryption key changed. Re-enter the secret key; until then purchases are sent without costs.', [], 'Modules.Axitrace.Admin');
         }
 
-        $code = $lastFailure['code'] ?? null;
-        if ($code === PurchaseSender::FAILURE_PUBLIC_KEY_REJECTED) {
+        $codes = array_column($failures, 'code');
+        if (in_array(PurchaseSender::FAILURE_PUBLIC_KEY_REJECTED, $codes, true)) {
             $errors[] = $t->trans('Public key rejected: AxiTrace does not recognise the public key, so purchases are not tracked. Copy the public key of your workspace again.', [], 'Modules.Axitrace.Admin');
         }
-        if ($code === PurchaseSender::FAILURE_SECRET_KEY_REJECTED) {
-            $errors[] = $t->trans('Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs. Enter the secret key of the same workspace as the public key.', [], 'Modules.Axitrace.Admin');
+        if (in_array(PurchaseSender::FAILURE_SECRET_KEY_REJECTED, $codes, true)) {
+            $errors[] = $t->trans('Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs and refunds wait in the delivery log. Enter the secret key of the same workspace as the public key, then click Retry now.', [], 'Modules.Axitrace.Admin');
         }
 
         return $errors;

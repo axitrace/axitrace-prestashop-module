@@ -54,6 +54,11 @@ final class StaleOrderReadDb implements DbGatewayInterface
         return $this->db->escape($value);
     }
 
+    public function escapeRaw(string $value): string
+    {
+        return $this->db->escapeRaw($value);
+    }
+
     public function escapeLike(string $value): string
     {
         return $this->db->escapeLike($value);

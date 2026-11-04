@@ -44,11 +44,16 @@ final class RecordingDb implements DbGatewayInterface
 
     public function escape(string $value): string
     {
-        return addslashes($value);
+        return PsqlEscape::text($value);
+    }
+
+    public function escapeRaw(string $value): string
+    {
+        return PsqlEscape::raw($value);
     }
 
     public function escapeLike(string $value): string
     {
-        return addcslashes(addslashes($value), '%_');
+        return PsqlEscape::like($value);
     }
 }

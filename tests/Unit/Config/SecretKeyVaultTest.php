@@ -65,7 +65,7 @@ final class SecretKeyVaultTest extends TestCase
         self::assertCount(1, $this->logger->errors);
         self::assertStringContainsString('Re-enter the secret key', $this->logger->errors[0]);
 
-        $failure = json_decode((string) $this->store->get(ModuleConfig::LAST_FAILURE), true);
+        $failure = json_decode((string) $this->store->get(ModuleConfig::LAST_FAILURE), true)[SecretKeyVault::FAILURE_CODE] ?? null;
         self::assertIsArray($failure);
         self::assertSame(SecretKeyVault::FAILURE_CODE, $failure['code']);
         self::assertSame('2026-11-03T12:00:00+00:00', $failure['at']);

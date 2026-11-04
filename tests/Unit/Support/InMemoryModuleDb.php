@@ -9,7 +9,8 @@ use Axitrace\PrestaShop\Adapter\DbGatewayInterface;
 /**
  * Executes the module's own statements on `axitrace_cart_snapshot` and `axitrace_order` against
  * in-memory tables, so hook tests can assert on rows instead of SQL strings. Escaping is
- * addslashes, undone when the values are parsed back.
+ * PrestaShop's ({@see PsqlEscape}: escape() strips tags like pSQL), undone when the values are
+ * parsed back.
  */
 final class InMemoryModuleDb implements DbGatewayInterface
 {
@@ -195,11 +196,12 @@ final class InMemoryModuleDb implements DbGatewayInterface
 
             return $before - count($this->failedEvents);
         }
-        if (preg_match("/^UPDATE `ps_axitrace_failed_event` SET `next_attempt_at` = '([^']+)' WHERE `status` = '(\\w+)'$/", $sql, $m) === 1) {
+        if (preg_match("/^UPDATE `ps_axitrace_failed_event` SET `next_attempt_at` = '([^']+)', `status` = '(\\w+)' WHERE `status` IN \\('(\\w+)', '(\\w+)'\\)$/", $sql, $m) === 1) {
             $changed = 0;
             foreach ($this->failedEvents as $id => $row) {
-                if ($row['status'] === $m[2] && $row['next_attempt_at'] !== $m[1]) {
+                if (in_array($row['status'], [$m[3], $m[4]], true) && ($row['next_attempt_at'] !== $m[1] || $row['status'] !== $m[2])) {
                     $this->failedEvents[$id]['next_attempt_at'] = $m[1];
+                    $this->failedEvents[$id]['status'] = $m[2];
                     ++$changed;
                 }
             }
@@ -322,12 +324,17 @@ final class InMemoryModuleDb implements DbGatewayInterface
 
     public function escape(string $value): string
     {
-        return addslashes($value);
+        return PsqlEscape::text($value);
+    }
+
+    public function escapeRaw(string $value): string
+    {
+        return PsqlEscape::raw($value);
     }
 
     public function escapeLike(string $value): string
     {
-        return addcslashes(addslashes($value), '%_');
+        return PsqlEscape::like($value);
     }
 
     /**

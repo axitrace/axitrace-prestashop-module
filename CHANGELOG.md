@@ -7,21 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- JSON stored by the module (retry queue payloads, attribution snapshots, sent purchase details) is
-  no longer cut at a `<` (a product named "Ring <5mm>" broke the retry and refund records).
-- A refund refused because of the secret key waits in the delivery log ("waiting for a valid secret
-  key") and is sent by "Retry now" once the key is fixed, instead of being dropped.
-- A purchase that could not be delivered nor queued is sent again at the next status change.
+## [1.0.0] - 2026-11-04
+
+First public release, for PrestaShop 8.1 to 9.x on PHP 8.1 or newer.
+
+### Features
+- Browser tracking: page views, product views, add to cart, begin checkout, add payment info and the
+  purchase on the confirmation page, through the AxiTrace SDK, with cookie consent modes.
+- Server-side purchase from the order status change (paid status, or placed with a cash on delivery
+  module), with the same event id as the browser purchase, so it is counted once.
+- Product costs and refunds for profit tracking (with the secret key): net unit costs per line, every
+  credit slip, line cancellations and Refunded or Canceled orders.
+- Retry queue with backoff (5 minutes doubling up to 6 hours, 10 attempts), no system cron needed,
+  optional cron URL; refunds refused because of the secret key wait until a valid key is saved.
+- Configuration page with Connection health (every recorded failure with its time and count, Dismiss
+  failures), delivery log with Retry now, and banners for rejected keys and refused tracking domains.
+- Multistore: every order, refund and retry uses the settings of its own shop.
+- psgdpr export and erasure of the module's records.
+
+### Fixed since 0.1.0
+- JSON stored by the module is no longer cut at a `<` (product names such as "Ring <5mm>").
+- A purchase or refund that could not be delivered nor queued is retried instead of lost; one failing
+  row no longer blocks a retry batch.
 - An order or refund without a readable currency, or a status refund without any known total, is
   never sent; the failure is shown in Connection health.
-- One failing row no longer stops a retry batch; retry run failures are shown in Connection health.
-- Connection health lists every recorded failure, not only the newest, with a "Dismiss failures"
-  button; a missing attribution snapshot under consent mode "browser and server-side" is shown as a
-  failure.
 - The settings form is protected by the module's own token (a forged POST could change the settings
   on PrestaShop 9).
-- An invalid shop time zone is logged as a warning.
 
 ## [0.1.0] - 2026-11-04
 

@@ -8,6 +8,7 @@ if (!defined('_PS_VERSION_')) {
     exit;
 }
 
+use Axitrace\PrestaShop\Adapter\ClockInterface;
 use Axitrace\PrestaShop\Adapter\ConfigurationStoreInterface;
 use Axitrace\PrestaShop\Adapter\TranslatorInterface;
 use Axitrace\PrestaShop\Config\EndpointResolver;
@@ -17,6 +18,7 @@ use Axitrace\PrestaShop\Config\SecretKeyVault;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Consent\ConsentMode;
 use Axitrace\PrestaShop\Normalizer\ConversionValueBasis;
+use Axitrace\PrestaShop\Retry\FailedEventQueue;
 
 /**
  * The configuration form: HelperForm definition, current values, validation and saving. Values are
@@ -60,6 +62,8 @@ final class ConfigFormHandler
         private readonly ModuleConfig $config,
         private readonly SecretKeyVault $vault,
         private readonly TranslatorInterface $translator,
+        private readonly FailedEventQueue $queue,
+        private readonly ClockInterface $clock,
     ) {
     }
 
@@ -157,6 +161,9 @@ final class ConfigFormHandler
             $this->vault->clear($scope);
         } elseif (self::text($input, ModuleConfig::SECRET_KEY) !== '') {
             $this->vault->store(self::text($input, ModuleConfig::SECRET_KEY), $scope);
+            // Refunds parked because AxiTrace rejected the previous key are sent with the new one
+            // by the retry run at the end of this back-office request.
+            $this->queue->requeueParked($this->clock->now());
         }
     }
 

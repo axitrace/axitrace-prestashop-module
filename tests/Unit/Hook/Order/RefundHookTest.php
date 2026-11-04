@@ -17,6 +17,7 @@ use Axitrace\PrestaShop\Refund\SentPurchase;
 use Axitrace\PrestaShop\Retry\FailedEventQueue;
 use Axitrace\PrestaShop\Retry\RetryRunner;
 use Axitrace\PrestaShop\Tests\Unit\Support\EchoTranslator;
+use Axitrace\PrestaShop\Tests\Unit\Support\FailingStatementDb;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeHttpTransport;
 use Axitrace\PrestaShop\Tests\Unit\Support\Fixtures;
 use Axitrace\PrestaShop\Tests\Unit\Support\PurchasePipeline;
@@ -265,6 +266,38 @@ final class RefundHookTest extends TestCase
         self::assertSame([], $pipeline->db->refunds, 'nothing reserved');
         self::assertNull($pipeline->db->orders[$order->idOrder]['refund_state'] ?? null);
         self::assertStringContainsString('the currency is unknown', $pipeline->lastFailure()['message'] ?? '');
+    }
+
+    public function testAQueueWriteFailureGivesTheReservationBackAndIsRecorded(): void
+    {
+        foreach (['retry' => new HttpResponse(503), 'key rejected' => new HttpResponse(401), 'refused' => new HttpResponse(400)] as $case => $answer) {
+            $pipeline = self::pipeline();
+            $order = self::sentCodOrder($pipeline, '8.1.7');
+            $pipeline->transport->willAnswer($answer);
+            $db = new FailingStatementDb($pipeline->db, 'INSERT INTO `ps_axitrace_failed_event`');
+
+            $pipeline->refundHook($db)->onStateChange($pipeline->db->orders[$order->idOrder], 6);
+
+            self::assertSame(1, $db->failures, $case);
+            self::assertSame([], $pipeline->db->failedEvents, $case);
+            self::assertSame([], $pipeline->db->refunds, $case . ': released, so a later trigger can report it');
+            self::assertSame(RefundHook::FAILURE_QUEUE_WRITE, $pipeline->lastFailure()['code'] ?? null, $case);
+        }
+    }
+
+    public function testTheCurrentOrderTotalFallbackIsRecordedAndDrivesTheRefundState(): void
+    {
+        $pipeline = self::pipeline();
+        $order = self::sentCodOrder($pipeline, '8.1.7');
+        $pipeline->db->orders[$order->idOrder]['purchase_snapshot'] = null;
+        $pipeline->refundReader->addSlip(new RefundSlip(91, $order->idOrder, $order->totalPaidTaxIncl, 0.0, new \DateTimeImmutable('2026-11-04T10:00:00+00:00'), []));
+
+        $pipeline->refundHook()->onSlipAdded($order->idOrder, 91);
+
+        self::assertCount(1, self::refunds($pipeline));
+        self::assertSame('refunded', $pipeline->db->orders[$order->idOrder]['refund_state'], 'the whole current total was refunded');
+        self::assertSame(RefundHook::FAILURE_BASE_FALLBACK, $pipeline->lastFailure()['code'] ?? null);
+        self::assertStringContainsString(sprintf('current order total %.2f', $order->totalPaidTaxIncl), (string) $pipeline->lastFailure()['message']);
     }
 
     public function testOtherStatesOfASentOrderAreNotRefunds(): void

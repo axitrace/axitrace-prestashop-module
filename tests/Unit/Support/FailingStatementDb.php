@@ -6,13 +6,17 @@ namespace Axitrace\PrestaShop\Tests\Unit\Support;
 
 use Axitrace\PrestaShop\Adapter\DbGatewayInterface;
 
-/** Runs everything on an {@see InMemoryModuleDb} but fails every statement containing $needle. */
+/** Runs everything on an {@see InMemoryModuleDb} but fails every statement containing one of the needles. */
 final class FailingStatementDb implements DbGatewayInterface
 {
     public int $failures = 0;
 
-    public function __construct(private readonly InMemoryModuleDb $db, private readonly string $needle)
+    /** @var list<string> */
+    private readonly array $needles;
+
+    public function __construct(private readonly InMemoryModuleDb $db, string ...$needles)
     {
+        $this->needles = array_values($needles);
     }
 
     public function prefix(): string
@@ -62,10 +66,12 @@ final class FailingStatementDb implements DbGatewayInterface
 
     private function guard(string $sql): void
     {
-        if (str_contains($sql, $this->needle)) {
-            ++$this->failures;
+        foreach ($this->needles as $needle) {
+            if (str_contains($sql, $needle)) {
+                ++$this->failures;
 
-            throw new \RuntimeException('Database statement failed: Deadlock found when trying to get lock');
+                throw new \RuntimeException('Database statement failed: Deadlock found when trying to get lock');
+            }
         }
     }
 }

@@ -251,18 +251,41 @@ final class FailedEventQueue
         return ['queued' => $counts[self::STATUS_QUEUED], 'parked' => $counts[self::STATUS_PARKED], 'dead' => $counts[self::STATUS_DEAD]];
     }
 
-    /** "Retry now": every queued and parked row becomes queued and due at once; returns how many. */
+    /**
+     * "Retry now": every parked row is queued again ({@see requeueParked()}) and every queued row
+     * becomes due at once; returns how many rows changed.
+     */
     public function makeQueuedDue(\DateTimeImmutable $now): int
     {
+        $requeued = $this->requeueParked($now);
         $changed = $this->db->update(sprintf(
-            "UPDATE `%saxitrace_failed_event` SET `next_attempt_at` = '%s', `status` = '%s' WHERE `status` IN ('%s', '%s')",
+            "UPDATE `%saxitrace_failed_event` SET `next_attempt_at` = '%s' WHERE `status` = '%s'",
             $this->db->prefix(),
             self::utc($now),
             self::STATUS_QUEUED,
+        ));
+        $this->refreshDueAt();
+
+        return max($requeued, $changed);
+    }
+
+    /**
+     * Parked rows become queued and due now with a fresh attempt count (the key they were refused
+     * with is gone; they get the full retry schedule). Called by "Retry now" and when a secret key
+     * is saved. Returns how many.
+     */
+    public function requeueParked(\DateTimeImmutable $now): int
+    {
+        $changed = $this->db->update(sprintf(
+            "UPDATE `%saxitrace_failed_event` SET `next_attempt_at` = '%s', `attempts` = 0, `status` = '%s' WHERE `status` = '%s'",
+            $this->db->prefix(),
+            self::utc($now),
             self::STATUS_QUEUED,
             self::STATUS_PARKED,
         ));
-        $this->refreshDueAt();
+        if ($changed > 0) {
+            $this->markDueBy($now);
+        }
 
         return $changed;
     }

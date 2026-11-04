@@ -55,13 +55,13 @@ final class ConfigPageNoticesTest extends TestCase
 
         self::assertSame(
             ['Public key rejected: AxiTrace does not recognise the public key, so purchases are not tracked. Copy the public key of your workspace again.'],
-            $notices->errors($endpoints, SecretKeyResult::absent(), [['at' => '', 'code' => 'public_key_rejected', 'message' => '']]),
+            $notices->errors($endpoints, SecretKeyResult::absent(), [['code' => 'public_key_rejected', 'message' => '', 'first_at' => '', 'last_at' => '', 'count' => 1]]),
         );
         self::assertSame(
             ['Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs and refunds wait in the delivery log. Enter the secret key of the same workspace as the public key, then click Retry now.'],
-            $notices->errors($endpoints, SecretKeyResult::present('sk_live_x'), [['at' => '', 'code' => 'secret_key_rejected', 'message' => '']]),
+            $notices->errors($endpoints, SecretKeyResult::present('sk_live_x'), [['code' => 'secret_key_rejected', 'message' => '', 'first_at' => '', 'last_at' => '', 'count' => 1]]),
         );
-        self::assertSame([], $notices->errors($endpoints, SecretKeyResult::absent(), [['at' => '', 'code' => 'delivery_failed', 'message' => '']]));
+        self::assertSame([], $notices->errors($endpoints, SecretKeyResult::absent(), [['code' => 'delivery_failed', 'message' => '', 'first_at' => '', 'last_at' => '', 'count' => 1]]));
     }
 
     public function testEveryRecordedKeyFailureGetsItsBannerNotOnlyTheNewest(): void
@@ -70,12 +70,22 @@ final class ConfigPageNoticesTest extends TestCase
             new ResolvedEndpoints('https://stat.axitrace.com', 'https://stat.axitrace.com'),
             SecretKeyResult::present('sk_live_x'),
             [
-                ['at' => '2026-11-04T10:00:00+00:00', 'code' => 'delivery_failed', 'message' => ''],
-                ['at' => '2026-11-04T09:00:00+00:00', 'code' => 'secret_key_rejected', 'message' => ''],
+                ['code' => 'delivery_failed', 'message' => '', 'first_at' => '2026-11-04T10:00:00+00:00', 'last_at' => '2026-11-04T10:00:00+00:00', 'count' => 1],
+                ['code' => 'secret_key_rejected', 'message' => '', 'first_at' => '2026-11-04T09:00:00+00:00', 'last_at' => '2026-11-04T09:00:00+00:00', 'count' => 1],
             ],
         );
 
         self::assertCount(1, $errors);
         self::assertStringStartsWith('Secret key rejected', $errors[0]);
+    }
+
+    public function testParkedRefundsGetABannerFromTheQueueCount(): void
+    {
+        $notices = new ConfigPageNotices(new EchoTranslator());
+        $endpoints = new ResolvedEndpoints('https://stat.axitrace.com', 'https://stat.axitrace.com');
+
+        self::assertSame([], $notices->errors($endpoints, SecretKeyResult::present('sk_live_x'), [], 0));
+        $errors = $notices->errors($endpoints, SecretKeyResult::present('sk_live_x'), [], 3);
+        self::assertSame(['3 refunds wait for a valid secret key: AxiTrace rejected the saved one. Enter the secret key of the same workspace as the public key; they are sent as soon as you save it.'], $errors, 'shown without any recorded failure');
     }
 }

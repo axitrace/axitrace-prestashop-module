@@ -160,17 +160,25 @@ final class RetryRunner
         return ShopScope::shop($this->shopGroups->groupOf($event->idShop), $event->idShop);
     }
 
-    /** A row whose handling threw (database, ledger): logged and recorded; the row stays as it was. */
+    /**
+     * A row whose handling threw (database, ledger): counted as a failed attempt when the queue can
+     * still be written (backoff, then dead after MAX_ATTEMPTS, so it never blocks the head of the
+     * batch), logged and recorded.
+     */
     private function rowFailed(FailedEvent $event, \Throwable $e): void
     {
-        $message = sprintf('retrying the %s %s failed (%s: %s); it is tried again at the next run.', $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? 'refund' : 'purchase', $event->eventId, $e::class, $e->getMessage());
+        $what = $event->endpoint === FailedEventQueue::ENDPOINT_REFUND ? 'refund' : 'purchase';
+        $message = sprintf('retrying the %s %s failed (%s: %s); it is tried again after the backoff.', $what, $event->eventId, $e::class, $e->getMessage());
         try {
-            try {
-                $scope = $this->scopeOf($event);
-            } catch (\Throwable) {
-                $scope = ShopScope::context();
+            if ($this->queue->recordFailure($event, mb_substr(sprintf('%s: %s', $e::class, $e->getMessage()), 0, 300), $this->clock->now())) {
+                $message .= sprintf(' It was given up after %d attempts.', FailedEventQueue::MAX_ATTEMPTS);
             }
-            $this->failures->record(self::FAILURE_CODE, $message, $scope);
+        } catch (\Throwable $queueError) {
+            $message .= sprintf(' Counting the attempt failed too (%s: %s), so it is retried at the next run.', $queueError::class, $queueError->getMessage());
+        }
+        try {
+            // The queue is shared by every shop: shown in every shop context.
+            $this->failures->recordGlobal(self::FAILURE_CODE, $message);
         } catch (\Throwable $recordError) {
             $this->logger->error(sprintf('%s; recording the failure failed too (%s: %s)', $message, $recordError::class, $recordError->getMessage()));
         }

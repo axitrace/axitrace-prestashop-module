@@ -26,11 +26,13 @@ final class ConfigPageNotices
     }
 
     /**
-     * @param list<array{at: string, code: string, message: string}> $failures {@see \Axitrace\PrestaShop\Config\FailureRecorder::all()}
+     * @param list<array{code: string, message: string, first_at: string, last_at: string, count: int}> $failures {@see \Axitrace\PrestaShop\Config\FailureRecorder::all()}
+     *
+     * @param int $parkedRefunds rows of the retry queue waiting for a valid secret key (counts()['parked'])
      *
      * @return list<string> translated plain-text messages, rendered as error banners
      */
-    public function errors(ResolvedEndpoints $endpoints, SecretKeyResult $secretKey, array $failures = []): array
+    public function errors(ResolvedEndpoints $endpoints, SecretKeyResult $secretKey, array $failures = [], int $parkedRefunds = 0): array
     {
         $t = $this->translator;
         $errors = [];
@@ -59,6 +61,11 @@ final class ConfigPageNotices
         }
         if (in_array(PurchaseSender::FAILURE_SECRET_KEY_REJECTED, $codes, true)) {
             $errors[] = $t->trans('Secret key rejected: AxiTrace refused the secret key, so purchases are sent without product costs and refunds wait in the delivery log. Enter the secret key of the same workspace as the public key, then click Retry now.', [], 'Modules.Axitrace.Admin');
+        }
+
+        // From the queue itself, not from a recorded failure: dismissing failures never hides it.
+        if ($parkedRefunds > 0) {
+            $errors[] = $t->trans('%count% refunds wait for a valid secret key: AxiTrace rejected the saved one. Enter the secret key of the same workspace as the public key; they are sent as soon as you save it.', ['%count%' => $parkedRefunds], 'Modules.Axitrace.Admin');
         }
 
         return $errors;

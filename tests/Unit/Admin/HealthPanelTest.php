@@ -104,6 +104,25 @@ final class HealthPanelTest extends TestCase
         self::assertFalse($panel->hasFailures($scope));
     }
 
+    public function testTheLatestTimeAndCountAreShownAndQueueFailuresAppearInEveryShop(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $endpoints = new ResolvedEndpoints(self::ENDPOINTS, self::ENDPOINTS);
+        $pipeline->failures()->record('delivery_failed', 'The purchase of order 8 could not be delivered.', ShopScope::shop(1, 1));
+        $pipeline->clock->now = $pipeline->clock->now->modify('+11 minutes');
+        $pipeline->failures()->record('delivery_failed', 'The purchase of order 9 could not be delivered.', ShopScope::shop(1, 1));
+        $pipeline->clock->now = $pipeline->clock->now->modify('+1 minute');
+        $pipeline->failures()->recordGlobal('retry_run', 'the retry run failed');
+
+        $shop1 = self::byLabel(self::panel($pipeline)->rows(ShopScope::shop(1, 1), $endpoints, SecretKeyState::Present));
+        $shop2 = self::byLabel(self::panel($pipeline)->rows(ShopScope::shop(1, 2), $endpoints, SecretKeyState::Present));
+
+        self::assertSame('2026-11-03T22:12:00+00:00: the retry run failed', $shop1['Last failure']['value']);
+        self::assertSame('2026-11-03T22:11:00+00:00 (2 times since 2026-11-03T22:00:00+00:00): The purchase of order 9 could not be delivered.', $shop1['Earlier failure']['value']);
+        self::assertSame('2026-11-03T22:12:00+00:00: the retry run failed', $shop2['Last failure']['value']);
+        self::assertArrayNotHasKey('Earlier failure', $shop2);
+    }
+
     public function testAParkedRefundMakesTheQueueRowAnError(): void
     {
         $pipeline = new PurchasePipeline();

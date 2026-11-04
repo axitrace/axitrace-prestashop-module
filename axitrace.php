@@ -151,7 +151,7 @@ class Axitrace extends Module
         $endpoints = $services->endpointResolver()->resolve($services->config()->trackingDomain($scope));
 
         $this->smarty()->assign([
-            'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey, $services->failureRecorder()->all($scope)),
+            'axitrace_errors' => $services->configPageNotices()->errors($endpoints, $secretKey, $services->failureRecorder()->all($scope), $services->failedEventQueue()->counts()['parked']),
             'axitrace_health' => $services->healthPanel()->rows($scope, $endpoints, $secretKey->state),
             'axitrace_has_failures' => $services->healthPanel()->hasFailures($scope),
             'axitrace_dismiss_token' => $this->actionToken()->forEmployee(HealthPanel::SUBMIT_DISMISS, $this->employeeId()),

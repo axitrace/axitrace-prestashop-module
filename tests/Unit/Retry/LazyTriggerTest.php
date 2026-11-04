@@ -127,7 +127,7 @@ final class LazyTriggerTest extends TestCase
         $report = $trigger->runLocked(RetryRunner::CRON_BATCH, 1.0);
 
         self::assertSame(0, $report?->processed);
-        $failure = $pipeline->failures()->last(ShopScope::context());
+        $failure = $pipeline->failures()->allWithGlobal(ShopScope::shop(1, 2))[0] ?? null;
         self::assertSame(LazyTrigger::FAILURE_CODE, $failure['code'] ?? null);
         self::assertStringContainsString('the retry run failed (RuntimeException: Database statement failed: Deadlock', $failure['message']);
         self::assertTrue($pipeline->lock()->acquire($pipeline->clock->now()), 'the lock was released');

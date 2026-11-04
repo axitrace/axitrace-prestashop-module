@@ -116,7 +116,7 @@ final class MultistoreTest extends TestCase
         $store->setGlobal(ModuleConfig::CONSENT_COOKIE, 'cookie_consent');
         $store->setGlobal(ModuleConfig::EXCLUDED_GROUPS, '4');
 
-        $handler = new ConfigFormHandler($store, $pipeline->config(), $pipeline->vault(), new EchoTranslator());
+        $handler = new ConfigFormHandler($store, $pipeline->config(), $pipeline->vault(), new EchoTranslator(), $pipeline->queue(), $pipeline->clock);
         $store->useContext(1, 2);
         $handler->save([
             ModuleConfig::ENABLED => '1',

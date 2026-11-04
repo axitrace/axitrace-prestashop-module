@@ -249,7 +249,7 @@ final class PurchasePipeline
     }
 
     /**
-     * @return array{at: string, code: string, message: string}|null
+     * @return array{code: string, message: string, first_at: string, last_at: string, count: int}|null
      */
     public function lastFailure(int $idShopGroup = 1, int $idShop = 1): ?array
     {

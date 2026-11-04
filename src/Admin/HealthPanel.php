@@ -91,11 +91,12 @@ final class HealthPanel
     /** True when at least one failure is recorded: the panel then offers "Dismiss failures". */
     public function hasFailures(ShopScope $scope): bool
     {
-        return $this->failures->all($scope) !== [];
+        return $this->failures->allWithGlobal($scope) !== [];
     }
 
     /**
-     * "Last failure" (the newest), then one "Earlier failure" row per other recorded failure code.
+     * "Last failure" (the newest), then one "Earlier failure" row per other recorded failure code,
+     * the selected shop's and the retry queue's (global) together.
      *
      * @return list<array{label: string, value: string, state: string}>
      */
@@ -104,7 +105,7 @@ final class HealthPanel
         $t = $this->translator;
         $d = 'Modules.Axitrace.Admin';
 
-        $failures = $this->failures->all($scope);
+        $failures = $this->failures->allWithGlobal($scope);
         if ($failures === []) {
             return [['label' => $t->trans('Last failure', [], $d), 'value' => $t->trans('None', [], $d), 'state' => self::OK]];
         }
@@ -113,7 +114,9 @@ final class HealthPanel
         foreach ($failures as $i => $failure) {
             $rows[] = [
                 'label' => $i === 0 ? $t->trans('Last failure', [], $d) : $t->trans('Earlier failure', [], $d),
-                'value' => $t->trans('%time%: %message%', ['%time%' => $failure['at'], '%message%' => $failure['message']], $d),
+                'value' => $failure['count'] > 1
+                    ? $t->trans('%time% (%count% times since %first%): %message%', ['%time%' => $failure['last_at'], '%count%' => $failure['count'], '%first%' => $failure['first_at'], '%message%' => $failure['message']], $d)
+                    : $t->trans('%time%: %message%', ['%time%' => $failure['last_at'], '%message%' => $failure['message']], $d),
                 'state' => self::ERROR,
             ];
         }

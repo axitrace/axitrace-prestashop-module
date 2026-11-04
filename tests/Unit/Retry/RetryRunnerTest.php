@@ -276,9 +276,15 @@ final class RetryRunnerTest extends TestCase
         self::assertSame(1, $report->failed);
         self::assertCount(2, $pipeline->transport->requests);
         self::assertSame([1], array_keys($pipeline->db->failedEvents), 'row 1 stays for the next run');
+        self::assertSame('2', $pipeline->db->failedEvents[1]['attempts'], 'counted as a failed attempt');
+        self::assertGreaterThan(FailedEventQueue::utc($pipeline->clock->now), $pipeline->db->failedEvents[1]['next_attempt_at'], 'backed off: no longer at the head of the batch');
         self::assertSame([], $pipeline->db->cartSnapshots, 'pruned although a row failed');
-        self::assertSame(RetryRunner::FAILURE_CODE, $pipeline->lastFailure()['code'] ?? null);
-        self::assertStringContainsString('retrying the purchase event-1 failed', $pipeline->lastFailure()['message']);
+        foreach ([ShopScope::shop(1, 1), ShopScope::shop(1, 2)] as $scope) {
+            $failure = $pipeline->failures()->allWithGlobal($scope)[0] ?? null;
+            self::assertSame(RetryRunner::FAILURE_CODE, $failure['code'] ?? null, 'the shared queue: shown in every shop context');
+            self::assertStringContainsString('retrying the purchase event-1 failed', $failure['message']);
+        }
+        self::assertNull($pipeline->lastFailure(), 'not a failure of one shop');
     }
 
     public function testHousekeepingRunsWhenTheBatchQueryFails(): void

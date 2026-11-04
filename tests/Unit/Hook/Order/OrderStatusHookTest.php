@@ -228,8 +228,8 @@ final class OrderStatusHookTest extends TestCase
 
             self::assertCount(0, $pipeline->transport->requests, $case . ': the consent decision itself is unchanged');
             self::assertTrue(PurchaseLedger::isVoid($pipeline->db->orders[$order->idOrder]), $case);
-            self::assertSame(OrderStatusHook::FAILURE_SNAPSHOT_MISSING, $pipeline->lastFailure()['code'] ?? null, $case);
-            self::assertStringContainsString($case === 'missing' ? 'no attribution snapshot was recorded' : 'attribution snapshot is unreadable', $pipeline->lastFailure()['message'], $case);
+            self::assertSame($case === 'missing' ? OrderStatusHook::FAILURE_SNAPSHOT_MISSING : OrderStatusHook::FAILURE_SNAPSHOT_UNREADABLE, $pipeline->lastFailure()['code'] ?? null, $case);
+            self::assertStringContainsString($case === 'missing' ? 'no attribution snapshot was recorded' : 'attribution snapshot is stored but unreadable', (string) $pipeline->lastFailure()['message'], $case);
             self::assertSame([], $pipeline->logger->infos, $case);
         }
 
@@ -241,6 +241,35 @@ final class OrderStatusHookTest extends TestCase
         self::assertCount(0, $pipeline->transport->requests);
         self::assertNull($pipeline->lastFailure());
         self::assertStringContainsString('no consent recorded for server-side tracking', $pipeline->logger->infos[0] ?? '');
+    }
+
+    public function testAnUnreadableSnapshotIsRecordedOutsideConsentModeToo(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $order = Fixtures::orders('9.2.0', 'k_paid_at_creation')[0];
+        $pipeline->place($order);
+        $pipeline->db->orders[$order->idOrder]['snapshot'] = '{"visitorId":"v';
+
+        $pipeline->status($order->idOrder, 2, 1);
+
+        self::assertCount(1, $pipeline->transport->requests, 'consent mode off: sent, without attribution');
+        self::assertSame([OrderStatusHook::FAILURE_SNAPSHOT_UNREADABLE], array_column($pipeline->failures()->all(ShopScope::shop(1, 1)), 'code'));
+    }
+
+    public function testAClaimThatCannotBeGivenBackSaysThePurchaseMustBeResentManually(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $order = Fixtures::orders('8.1.7', 'b1_wire_order')[0];
+        $pipeline->place($order);
+        $pipeline->transport->willAnswer(new HttpResponse(503));
+
+        $pipeline->hook(new FailingStatementDb($pipeline->db, 'INSERT INTO `ps_axitrace_failed_event`', 'SET `purchase_claimed_at` = NULL'))->handle(new StatusChange($order->idOrder, 2, true));
+
+        self::assertTrue(PurchaseLedger::isClaimed($pipeline->db->orders[$order->idOrder]));
+        $failure = $pipeline->lastFailure();
+        self::assertSame(PurchaseSender::FAILURE_QUEUE_WRITE, $failure['code'] ?? null);
+        self::assertStringContainsString('could not be queued for a retry', $failure['message']);
+        self::assertStringContainsString('the purchase is NOT sent: resend it manually', $failure['message']);
     }
 
     public function testAQueueWriteFailureReleasesTheClaimAndTheNextStatusChangeResends(): void

@@ -196,13 +196,17 @@ final class InMemoryModuleDb implements DbGatewayInterface
 
             return $before - count($this->failedEvents);
         }
-        if (preg_match("/^UPDATE `ps_axitrace_failed_event` SET `next_attempt_at` = '([^']+)', `status` = '(\\w+)' WHERE `status` IN \\('(\\w+)', '(\\w+)'\\)$/", $sql, $m) === 1) {
+        if (preg_match("/^UPDATE `ps_axitrace_failed_event` SET (.*) WHERE `status` = '(\\w+)'$/s", $sql, $m) === 1) {
+            $assignments = $this->assignments($m[1]);
             $changed = 0;
             foreach ($this->failedEvents as $id => $row) {
-                if (in_array($row['status'], [$m[3], $m[4]], true) && ($row['next_attempt_at'] !== $m[1] || $row['status'] !== $m[2])) {
-                    $this->failedEvents[$id]['next_attempt_at'] = $m[1];
-                    $this->failedEvents[$id]['status'] = $m[2];
-                    ++$changed;
+                if ($row['status'] !== $m[2]) {
+                    continue;
+                }
+                $updated = array_merge($row, $assignments);
+                if ($updated !== $row) {
+                    $this->failedEvents[$id] = $updated;
+                    ++$changed; // MySQL reports changed rows only.
                 }
             }
 

@@ -52,6 +52,7 @@ final class OrderStatusHook
 {
     public const FAILURE_CODE = 'order_status';
     public const FAILURE_SNAPSHOT_MISSING = 'snapshot_missing';
+    public const FAILURE_SNAPSHOT_UNREADABLE = 'snapshot_unreadable';
 
     public function __construct(
         private readonly ModuleConfig $config,
@@ -134,6 +135,13 @@ final class OrderStatusHook
 
         $rawSnapshot = is_string($row['snapshot'] ?? null) ? $row['snapshot'] : '';
         $snapshot = SnapshotBuilder::decode($rawSnapshot);
+        if ($snapshot === null && trim($rawSnapshot) !== '') {
+            // Stored but unreadable: a module bug or a damaged row, never an expected state.
+            $this->failures->record(self::FAILURE_SNAPSHOT_UNREADABLE, sprintf(
+                'order %d: its attribution snapshot is stored but unreadable, so the purchase carries no attribution or consent (with consent mode "browser and server-side" it is not sent).',
+                $order->idOrder,
+            ), $scope);
+        }
 
         if ($this->exclusion->excludes($order->customerDefaultGroupId, $scope)) {
             $this->ledger->markVoid($order->idOrder);
@@ -145,14 +153,13 @@ final class OrderStatusHook
         $consent = $snapshot['consent'] ?? null;
         if (!$this->consentGate->allowsServerTracking($this->config->consentMode($scope), is_string($consent) ? $consent : null)) {
             $this->ledger->markVoid($order->idOrder);
-            if ($snapshot === null) {
+            if (trim($rawSnapshot) === '') {
                 // Not the buyer's choice: the module has no attribution snapshot to read consent from.
                 $this->failures->record(self::FAILURE_SNAPSHOT_MISSING, sprintf(
-                    'order %d not sent: %s, so no consent could be read for server-side tracking (consent mode requires it).',
+                    'order %d not sent: no attribution snapshot was recorded for its cart (order created outside the storefront, or the cart page events never ran), so no consent could be read for server-side tracking (consent mode requires it).',
                     $order->idOrder,
-                    trim($rawSnapshot) === '' ? 'no attribution snapshot was recorded for its cart (order created outside the storefront, or the cart page events never ran)' : 'its attribution snapshot is unreadable',
                 ), $scope);
-            } else {
+            } elseif ($snapshot !== null) {
                 $this->logger->info(sprintf('order %d not sent: no consent recorded for server-side tracking.', $order->idOrder));
             }
 
@@ -194,13 +201,20 @@ final class OrderStatusHook
         } catch (\Throwable $e) {
             // Neither delivered nor queued: give the claim back so the next status change sends it
             // again (the same eventSalt deduplicates if the first request did arrive).
-            $this->ledger->releaseClaim($order->idOrder);
+            $queueError = sprintf('%s: %s', $e::class, $e->getMessage());
+            try {
+                $this->ledger->releaseClaim($order->idOrder);
+                $outcome = 'it is sent again at the next status change';
+            } catch (\Throwable $releaseError) {
+                // Still claimed: no later status change will send it.
+                $outcome = sprintf('giving its claim back failed too (%s: %s), so the purchase is NOT sent: resend it manually', $releaseError::class, $releaseError->getMessage());
+            }
             $this->failures->record(PurchaseSender::FAILURE_QUEUE_WRITE, sprintf(
-                'The purchase of order %d was not delivered (%s) and could not be queued for a retry (%s: %s); it is sent again at the next status change.',
+                'The purchase of order %d was not delivered (%s) and could not be queued for a retry (%s); %s.',
                 $order->idOrder,
                 $result->error,
-                $e::class,
-                $e->getMessage(),
+                $queueError,
+                $outcome,
             ), $scope);
         }
     }

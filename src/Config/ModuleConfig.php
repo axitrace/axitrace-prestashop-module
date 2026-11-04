@@ -35,6 +35,8 @@ final class ModuleConfig
     public const RETRY_DUE_AT = 'AXITRACE_RETRY_DUE_AT';
     public const RETRY_LOCK = 'AXITRACE_RETRY_LOCK';
     public const LAST_FAILURE = 'AXITRACE_LAST_FAILURE';
+    /** Failures of the retry queue, which is shared by every shop: stored globally. */
+    public const QUEUE_FAILURE = 'AXITRACE_QUEUE_FAILURE';
     public const LAST_SUCCESS = 'AXITRACE_LAST_SUCCESS';
     public const COST_KEY_STATE = 'AXITRACE_COST_KEY_STATE';
 
@@ -54,6 +56,7 @@ final class ModuleConfig
         self::RETRY_DUE_AT,
         self::RETRY_LOCK,
         self::LAST_FAILURE,
+        self::QUEUE_FAILURE,
         self::LAST_SUCCESS,
         self::COST_KEY_STATE,
     ];

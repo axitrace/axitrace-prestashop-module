@@ -68,7 +68,7 @@ final class SecretKeyVaultTest extends TestCase
         $failure = json_decode((string) $this->store->get(ModuleConfig::LAST_FAILURE), true)[SecretKeyVault::FAILURE_CODE] ?? null;
         self::assertIsArray($failure);
         self::assertSame(SecretKeyVault::FAILURE_CODE, $failure['code']);
-        self::assertSame('2026-11-03T12:00:00+00:00', $failure['at']);
+        self::assertSame('2026-11-03T12:00:00+00:00', $failure['first_at']);
     }
 
     public function testRepeatedFailureWritesTheLastFailureOnce(): void

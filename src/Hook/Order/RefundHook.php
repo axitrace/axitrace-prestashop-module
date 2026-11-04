@@ -58,6 +58,8 @@ final class RefundHook
     public const ACTION_CANCEL_LINE = 0;
 
     public const FAILURE_CODE = 'refund_failed';
+    public const FAILURE_QUEUE_WRITE = 'refund_queue_write_failed';
+    public const FAILURE_BASE_FALLBACK = 'refund_base_fallback';
 
     /** Amounts below half a cent are "nothing left". */
     private const EPSILON = 0.005;
@@ -95,7 +97,7 @@ final class RefundHook
 
             $body = $this->normalizer->slip($slip, $this->currency($sent, $idOrder));
             $this->dispatch($idOrder, $scope, RefundLedger::KIND_SLIP, $body);
-            $this->updateRefundState($idOrder, $sent, null);
+            $this->updateRefundState($idOrder, $scope, $sent, null);
         });
     }
 
@@ -132,7 +134,7 @@ final class RefundHook
 
             $body = $this->normalizer->lineCancel($idOrder, $line, $cancelQuantity, $cumulative, $this->currency($sent, $idOrder), $this->clock->now());
             $this->dispatch($idOrder, $scope, RefundLedger::KIND_LINE, $body);
-            $this->updateRefundState($idOrder, $sent, null);
+            $this->updateRefundState($idOrder, $scope, $sent, null);
         });
     }
 
@@ -170,16 +172,16 @@ final class RefundHook
             }
 
             $order = $this->orders->read($idOrder);
-            $rest = round($this->refundBase($idOrder, $sent, $order) - $this->ledger->totalFor($idOrder), 2);
+            $rest = round($this->refundBase($idOrder, $scope, $sent, $order) - $this->ledger->totalFor($idOrder), 2);
             if ($rest < self::EPSILON) {
-                $this->updateRefundState($idOrder, $sent, $isCancellation ? self::STATE_CANCELLED : self::STATE_REFUNDED);
+                $this->updateRefundState($idOrder, $scope, $sent, $isCancellation ? self::STATE_CANCELLED : self::STATE_REFUNDED);
 
                 return;
             }
 
             $body = $this->normalizer->state($idOrder, $newStateId, $isCancellation, $rest, $this->currency($sent, $idOrder), $order->lines ?? [], $this->clock->now());
             $this->dispatch($idOrder, $scope, RefundLedger::KIND_STATE, $body);
-            $this->updateRefundState($idOrder, $sent, $isCancellation ? self::STATE_CANCELLED : self::STATE_REFUNDED);
+            $this->updateRefundState($idOrder, $scope, $sent, $isCancellation ? self::STATE_CANCELLED : self::STATE_REFUNDED);
         });
     }
 
@@ -211,7 +213,9 @@ final class RefundHook
     }
 
     /**
-     * Records the refund once, sends it, and queues it when AxiTrace was not reached.
+     * Records the refund once, sends it, and queues it when AxiTrace was not reached. When the
+     * queue cannot be written the reservation is given back (a reserved refund that is neither
+     * delivered nor queued would never be reported) and {@see FAILURE_QUEUE_WRITE} is recorded.
      *
      * @param array<string, mixed> $body
      */
@@ -223,34 +227,64 @@ final class RefundHook
             return; // reported before: the same slip, line cancel or status seen again
         }
 
+        $idShop = $scope->idShop ?? 0;
         try {
             $result = $this->sender->send($body, $scope);
         } catch (SecretKeyRejectedException) {
             // Recorded for the banner by the sender. Parked with its reservation: the delivery log
             // lists it and "Retry now" sends it once the merchant entered a valid key.
-            $this->queue->park($refundId, FailedEventQueue::ENDPOINT_REFUND, $scope->idShop ?? 0, $body, 'AxiTrace rejected the secret key (HTTP 401): enter a valid secret key, then click Retry now.', $this->clock->now());
+            $this->queueWrite($idOrder, $refundId, $scope, 'AxiTrace rejected the secret key', function () use ($refundId, $idShop, $body): void {
+                $this->queue->park($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, 'AxiTrace rejected the secret key (HTTP 401): enter a valid secret key, then click Retry now.', $this->clock->now());
+            });
 
             return;
         } catch (\Throwable $e) {
             $result = new DeliveryResult(DeliveryOutcome::Retry, null, sprintf('%s: %s', $e::class, mb_substr($e->getMessage(), 0, 200)));
         }
 
-        $idShop = $scope->idShop ?? 0;
         if ($result->isSent()) {
             $this->ledger->markSent($refundId, $this->clock->now());
         } elseif ($result->outcome->isFinalFailure()) {
             $this->ledger->release($refundId);
-            $this->queue->addDead($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, $result->error, $this->clock->now());
+            $this->queueWrite($idOrder, $refundId, $scope, $result->error, function () use ($refundId, $idShop, $body, $result): void {
+                $this->queue->addDead($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, $result->error, $this->clock->now());
+            });
         } else {
-            $this->queue->enqueue($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, $result->error, $this->clock->now());
+            $this->queueWrite($idOrder, $refundId, $scope, $result->error, function () use ($refundId, $idShop, $body, $result): void {
+                $this->queue->enqueue($refundId, FailedEventQueue::ENDPOINT_REFUND, $idShop, $body, $result->error, $this->clock->now());
+            });
         }
     }
 
-    private function updateRefundState(int $idOrder, ?SentPurchase $sent, ?string $state): void
+    /** Runs one queue write; on failure releases the reservation and records the failure. */
+    private function queueWrite(int $idOrder, string $refundId, ShopScope $scope, string $deliveryError, callable $write): void
+    {
+        try {
+            $write();
+        } catch (\Throwable $e) {
+            $message = sprintf(
+                'The refund %s of order %d was not delivered (%s) and could not be written to the retry queue (%s: %s); it is reported again only if PrestaShop triggers it again, otherwise report it manually.',
+                $refundId,
+                $idOrder,
+                $deliveryError,
+                $e::class,
+                $e->getMessage(),
+            );
+            try {
+                $this->ledger->release($refundId);
+            } catch (\Throwable $releaseError) {
+                $message .= sprintf(' Releasing its reservation failed too (%s: %s).', $releaseError::class, $releaseError->getMessage());
+            }
+            $this->failures->record(self::FAILURE_QUEUE_WRITE, $message, $scope);
+        }
+    }
+
+    private function updateRefundState(int $idOrder, ShopScope $scope, ?SentPurchase $sent, ?string $state): void
     {
         if ($state === null) {
-            $total = $sent->totalTaxIncl ?? 0.0;
-            $state = $total > 0.0 && $this->ledger->totalFor($idOrder) >= $total - self::EPSILON
+            // The same base as a status refund: the sent purchase, else the current order total.
+            $total = $this->stateBase($idOrder, $scope, $sent);
+            $state = $total !== null && $total > 0.0 && $this->ledger->totalFor($idOrder) >= $total - self::EPSILON
                 ? self::STATE_REFUNDED
                 : self::STATE_PARTIALLY_REFUNDED;
         }
@@ -258,13 +292,24 @@ final class RefundHook
         $this->rows->setRefundState($idOrder, $state);
     }
 
+    /** {@see refundBase()} without throwing: null when neither total is known. */
+    private function stateBase(int $idOrder, ShopScope $scope, ?SentPurchase $sent): ?float
+    {
+        if ($sent !== null) {
+            return $sent->totalTaxIncl;
+        }
+        $order = $this->orders->read($idOrder);
+
+        return $order === null ? null : $this->refundBase($idOrder, $scope, null, $order);
+    }
+
     /**
      * What a status refund starts from: the total the purchase carried. An order claimed before
      * 0.1.0 (or with an unreadable purchase snapshot) falls back to the order's current total,
-     * logged because PrestaShop may have changed it since. Neither known: throws, so nothing is
-     * sent and the order is not marked refunded or cancelled.
+     * recorded ({@see FAILURE_BASE_FALLBACK}) because PrestaShop may have changed it since.
+     * Neither known: throws, so nothing is sent and the order is not marked refunded or cancelled.
      */
-    private function refundBase(int $idOrder, ?SentPurchase $sent, ?PurchaseOrder $order): float
+    private function refundBase(int $idOrder, ShopScope $scope, ?SentPurchase $sent, ?PurchaseOrder $order): float
     {
         if ($sent !== null) {
             return $sent->totalTaxIncl;
@@ -273,7 +318,7 @@ final class RefundHook
             throw new \RuntimeException(sprintf('order %d: neither the sent purchase nor the order itself could be read, so the refunded amount is unknown', $idOrder));
         }
 
-        $this->logger->error(sprintf('order %d: the purchase snapshot is missing or unreadable; the status refund is computed from the current order total %.2f, which PrestaShop may have changed since the purchase was sent.', $idOrder, $order->totalPaidTaxIncl));
+        $this->failures->record(self::FAILURE_BASE_FALLBACK, sprintf('order %d: the purchase snapshot is missing or unreadable; refunds are computed from the current order total %.2f %s, which PrestaShop may have changed since the purchase was sent.', $idOrder, $order->totalPaidTaxIncl, $order->currency), $scope);
 
         return $order->totalPaidTaxIncl;
     }

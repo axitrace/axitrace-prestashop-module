@@ -16,6 +16,8 @@ use Axitrace\PrestaShop\Tests\Unit\Support\FixedClock;
 use Axitrace\PrestaShop\Tests\Unit\Support\InMemoryConfigurationStore;
 use Axitrace\PrestaShop\Tests\Unit\Support\SpyLogger;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Axitrace\PrestaShop\Retry\FailedEventQueue;
+use Axitrace\PrestaShop\Tests\Unit\Support\InMemoryModuleDb;
 use PHPUnit\Framework\TestCase;
 
 final class ConfigFormHandlerTest extends TestCase
@@ -29,6 +31,8 @@ final class ConfigFormHandlerTest extends TestCase
     private EchoTranslator $translator;
     private ConfigFormHandler $handler;
 
+    private InMemoryModuleDb $db;
+
     protected function setUp(): void
     {
         $this->store = new InMemoryConfigurationStore();
@@ -38,7 +42,23 @@ final class ConfigFormHandlerTest extends TestCase
             new FakeCipher(),
             new FailureRecorder($this->store, new SpyLogger(), new FixedClock()),
         );
-        $this->handler = new ConfigFormHandler($this->store, new ModuleConfig($this->store), $this->vault, $this->translator);
+        $this->db = new InMemoryModuleDb();
+        $this->handler = new ConfigFormHandler($this->store, new ModuleConfig($this->store), $this->vault, $this->translator, new FailedEventQueue($this->db, $this->store), new FixedClock());
+    }
+
+    public function testSavingASecretKeyRequeuesTheParkedRefunds(): void
+    {
+        $queue = new FailedEventQueue($this->db, $this->store);
+        $parkedAt = new \DateTimeImmutable('2026-10-01T10:00:00+00:00');
+        $queue->park('prestashop:5:slip:1', FailedEventQueue::ENDPOINT_REFUND, 1, ['refundId' => 'prestashop:5:slip:1'], 'secret key rejected', $parkedAt);
+        $queue->enqueue('other', FailedEventQueue::ENDPOINT_PIXEL, 1, ['eventSalt' => 'other'], 'HTTP 503', (new FixedClock())->now());
+
+        $this->handler->save(self::input(), ShopScope::context());
+
+        $rows = array_values($this->db->failedEvents);
+        self::assertSame(['queued', '0', FailedEventQueue::utc((new FixedClock())->now())], [$rows[0]['status'], $rows[0]['attempts'], $rows[0]['next_attempt_at']], 'due now with a fresh attempt count');
+        self::assertSame('1', $rows[1]['attempts'], 'a queued row keeps its schedule');
+        self::assertSame((new FixedClock())->now()->getTimestamp(), $queue->dueAt(), 'due now: the lazy trigger runs it at the end of this request');
     }
 
     public function testValidSubmissionPassesAndIsSaved(): void

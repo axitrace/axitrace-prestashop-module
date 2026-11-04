@@ -12,7 +12,6 @@ use Axitrace\PrestaShop\Adapter\ClockInterface;
 use Axitrace\PrestaShop\Adapter\DeferredTaskSchedulerInterface;
 use Axitrace\PrestaShop\Adapter\LoggerInterface;
 use Axitrace\PrestaShop\Config\FailureRecorder;
-use Axitrace\PrestaShop\Config\ShopScope;
 
 /**
  * Retries without a system cron (A25): ordinary storefront (`displayHeader`) and back-office
@@ -96,7 +95,7 @@ final class LazyTrigger
     private function failed(string $message): void
     {
         try {
-            $this->failures->record(self::FAILURE_CODE, $message, ShopScope::context());
+            $this->failures->recordGlobal(self::FAILURE_CODE, $message);
         } catch (\Throwable $e) {
             $this->logger->error(sprintf('%s; recording the failure failed too (%s: %s)', $message, $e::class, $e->getMessage()));
         }

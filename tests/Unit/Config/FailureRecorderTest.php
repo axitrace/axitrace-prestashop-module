@@ -41,18 +41,38 @@ final class FailureRecorderTest extends TestCase
         self::assertSame('payload_rejected', $this->failures->last($this->scope)['code'] ?? null);
     }
 
-    public function testEntriesAreNewestFirstAndAKnownCodeIsWrittenOnce(): void
+    public function testARepeatedFailureUpdatesItsEntryAtMostEveryTenMinutes(): void
     {
         $this->failures->record('a', 'first a', $this->scope);
         $this->clock->now = $this->clock->now->modify('+1 minute');
         $this->failures->record('b', 'first b', $this->scope);
         $this->clock->now = $this->clock->now->modify('+1 minute');
-        $this->failures->record('a', 'second a', $this->scope);
+        $this->failures->record('a', 'second a, within ten minutes', $this->scope);
 
         $all = $this->failures->all($this->scope);
         self::assertSame(['b', 'a'], array_column($all, 'code'));
-        self::assertSame('first a', $all[1]['message']);
+        self::assertSame(['first a', '2026-11-03T12:00:00+00:00', 1], [$all[1]['message'], $all[1]['last_at'], $all[1]['count']], 'not written within ten minutes');
         self::assertCount(3, $this->logger->errors, 'every occurrence is still logged');
+
+        $this->clock->now = $this->clock->now->modify('+10 minutes');
+        $this->failures->record('a', 'third a', $this->scope);
+
+        $a = $this->failures->last($this->scope);
+        self::assertSame(['a', 'third a', '2026-11-03T12:00:00+00:00', '2026-11-03T12:12:00+00:00', 2], [$a['code'] ?? null, $a['message'] ?? null, $a['first_at'] ?? null, $a['last_at'] ?? null, $a['count'] ?? null]);
+    }
+
+    public function testQueueFailuresAreGlobalAndMergedIntoEveryShopView(): void
+    {
+        $this->failures->recordGlobal('retry_run', 'the retry run failed');
+        $this->clock->now = $this->clock->now->modify('+1 minute');
+        $this->failures->record('delivery_failed', 'shop 1 delivery', ShopScope::shop(1, 1));
+
+        self::assertSame(['delivery_failed', 'retry_run'], array_column($this->failures->allWithGlobal(ShopScope::shop(1, 1)), 'code'));
+        self::assertSame(['retry_run'], array_column($this->failures->allWithGlobal(ShopScope::shop(1, 2)), 'code'));
+        self::assertSame([], $this->failures->all(ShopScope::shop(1, 2)), 'not stored in a shop');
+
+        $this->failures->clearAll(ShopScope::shop(1, 2));
+        self::assertSame(['delivery_failed'], array_column($this->failures->allWithGlobal(ShopScope::shop(1, 1)), 'code'), 'dismiss clears the queue failures, not another shop');
     }
 
     public function testAMessageWithAngleBracketsSurvivesTheConfigurationStore(): void
@@ -78,7 +98,7 @@ final class FailureRecorderTest extends TestCase
     {
         $this->store->set(ModuleConfig::LAST_FAILURE, '{"at":"2026-11-01T10:00:00+00:00","code":"order_status","message":"old"}', 1, 1);
 
-        self::assertSame([['at' => '2026-11-01T10:00:00+00:00', 'code' => 'order_status', 'message' => 'old']], $this->failures->all($this->scope));
+        self::assertSame([['code' => 'order_status', 'message' => 'old', 'first_at' => '2026-11-01T10:00:00+00:00', 'last_at' => '2026-11-01T10:00:00+00:00', 'count' => 1]], $this->failures->all($this->scope));
 
         $this->failures->record('delivery_failed', 'new', $this->scope);
         self::assertSame(['delivery_failed', 'order_status'], array_column($this->failures->all($this->scope), 'code'));

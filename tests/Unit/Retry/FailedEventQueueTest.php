@@ -138,4 +138,27 @@ final class FailedEventQueueTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         (new PurchasePipeline())->queue()->enqueue('a', 'track', 1, [], 'x', new \DateTimeImmutable());
     }
+
+    public function testRetryNowQueuesParkedRowsWithAFreshAttemptCount(): void
+    {
+        $pipeline = new PurchasePipeline();
+        $queue = $pipeline->queue();
+        $then = new \DateTimeImmutable('2026-11-03T20:00:00+00:00');
+        $queue->enqueue('refund-1', 'refund', 1, ['refundId' => 'refund-1'], 'HTTP 503', $then);
+        $event = $queue->due($then->modify('+1 hour'), 1)[0];
+        for ($i = 0; $i < 8; ++$i) {
+            $queue->recordFailure($event, 'HTTP 503', $then);
+            $event = $queue->due($then->modify('+1 year'), 1)[0];
+        }
+        $queue->markParked($event, 'secret key rejected', $then);
+        self::assertSame('10', array_values($pipeline->db->failedEvents)[0]['attempts']);
+
+        $now = new \DateTimeImmutable('2026-11-04T09:00:00+00:00');
+        $queue->makeQueuedDue($now);
+
+        $row = array_values($pipeline->db->failedEvents)[0];
+        self::assertSame(['queued', '0', '2026-11-04 09:00:00'], [$row['status'], $row['attempts'], $row['next_attempt_at']]);
+        $queue->recordFailure($queue->due($now, 1)[0], 'HTTP 503', $now);
+        self::assertSame('queued', array_values($pipeline->db->failedEvents)[0]['status'], 'the full schedule again, not dead after one failure');
+    }
 }

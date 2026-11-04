@@ -107,7 +107,7 @@ final class ModuleServices
 
     public function configFormHandler(): ConfigFormHandler
     {
-        return new ConfigFormHandler($this->store(), $this->config(), $this->secretKeyVault(), $this->translator());
+        return new ConfigFormHandler($this->store(), $this->config(), $this->secretKeyVault(), $this->translator(), $this->failedEventQueue(), new SystemClock());
     }
 
     public function healthPanel(): HealthPanel

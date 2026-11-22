@@ -17,6 +17,7 @@ use Axitrace\PrestaShop\Config\SecretKeyState;
 use Axitrace\PrestaShop\Config\SecretKeyVault;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Consent\ConsentMode;
+use Axitrace\PrestaShop\Domain\StoreDomainClaimer;
 use Axitrace\PrestaShop\Normalizer\ConversionValueBasis;
 use Axitrace\PrestaShop\Retry\FailedEventQueue;
 
@@ -64,6 +65,7 @@ final class ConfigFormHandler
         private readonly TranslatorInterface $translator,
         private readonly FailedEventQueue $queue,
         private readonly ClockInterface $clock,
+        private readonly StoreDomainClaimer $domainClaimer,
     ) {
     }
 
@@ -130,7 +132,9 @@ final class ConfigFormHandler
     }
 
     /**
-     * Saves validated values into the current shop context.
+     * Saves validated values into the current shop context, then asks AxiTrace to verify the store
+     * domains with the saved keys (synchronous, at most {@see StoreDomainClaimer::TOTAL_TIMEOUT_SECONDS}
+     * per claim; the outcome is shown on the configuration page, a failure never fails the save).
      *
      * @param array<string, mixed> $input
      */
@@ -165,6 +169,8 @@ final class ConfigFormHandler
             // by the retry run at the end of this back-office request.
             $this->queue->requeueParked($this->clock->now());
         }
+
+        $this->domainClaimer->claimAll();
     }
 
     /**

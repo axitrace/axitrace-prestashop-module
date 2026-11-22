@@ -13,6 +13,7 @@ use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\SecretKeyVault;
 use Axitrace\PrestaShop\Config\ShopScope;
 use Axitrace\PrestaShop\Consent\ConsentGate;
+use Axitrace\PrestaShop\Domain\StoreDomainClaimer;
 use Axitrace\PrestaShop\EventId\Ga4TransactionEventId;
 use Axitrace\PrestaShop\Exclusion\CustomerGroupExclusion;
 use Axitrace\PrestaShop\Hook\Order\OrderStatusHook;
@@ -173,6 +174,22 @@ final class PurchasePipeline
             $this->endpointResolver(),
             $this->failures(),
             $this->health(),
+        );
+    }
+
+    /** The store domain claimer over a separate transport (no shop host: no claim request). */
+    public function domainClaimer(?HttpTransportInterface $transport = null): StoreDomainClaimer
+    {
+        return new StoreDomainClaimer(
+            new FakeStoreHostsReader(),
+            $this->config(),
+            $this->vault(),
+            $this->store,
+            $transport ?? new FakeHttpTransport(),
+            new FakeEnvironment(),
+            $this->failures(),
+            $this->clock,
+            '1.1.0',
         );
     }
 

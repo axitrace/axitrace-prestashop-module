@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-22
+
+### Added
+- Automatic store domain verification: the module asks AxiTrace to verify the main shop URL of every
+  shop (multistore: grouped by workspace keys) when the settings are saved, at install, once a day
+  and once right after the upgrade, so the browser events of the store (page views, add to cart,
+  checkout) are accepted without adding the domain by hand in AxiTrace. AxiTrace checks it through
+  the new proof URL `/index.php?fc=module&module=axitrace&controller=domainproof`, which answers
+  for the shop of the requested URL, signed with its secret key when one is saved, also in
+  maintenance mode.
+- "Store domain" panel on the configuration page: verified, still verifying, or what is wrong in one
+  sentence per shop domain, with a "Verify store domain" button.
+
+### Fixed
+- The status, cron and proof URLs answered an empty page to a request that accepts JSON: PrestaShop
+  runs a controller in ajax mode then and never called their output. The storefront script asks the
+  status URL that way, so excluded customer groups were still tracked in the browser (their purchases
+  were held back on the server either way).
+- Upgrading from 1.0.0 failed and PrestaShop disabled the module: the upgrade script used a class the
+  1.0.0 autoloader of the upload request cannot load. It now only marks the domain claim as due.
+
 ## [1.0.0] - 2026-11-04
 
 First public release, for PrestaShop 8.1 to 9.x on PHP 8.1 or newer.

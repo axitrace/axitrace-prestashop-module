@@ -39,6 +39,10 @@ final class ModuleConfig
     public const QUEUE_FAILURE = 'AXITRACE_QUEUE_FAILURE';
     public const LAST_SUCCESS = 'AXITRACE_LAST_SUCCESS';
     public const COST_KEY_STATE = 'AXITRACE_COST_KEY_STATE';
+    /** Last store domain claim outcome, per shop ({@see \Axitrace\PrestaShop\Domain\StoreDomainStatus}). */
+    public const DOMAIN_STATUS = 'AXITRACE_DOMAIN_STATUS';
+    /** Unix time of the next daily store domain claim, global. */
+    public const DOMAIN_CLAIM_DUE_AT = 'AXITRACE_DOMAIN_CLAIM_DUE_AT';
 
     /** Every key the module owns; uninstall also sweeps any other AXITRACE_* name. */
     public const ALL_KEYS = [
@@ -59,6 +63,8 @@ final class ModuleConfig
         self::QUEUE_FAILURE,
         self::LAST_SUCCESS,
         self::COST_KEY_STATE,
+        self::DOMAIN_STATUS,
+        self::DOMAIN_CLAIM_DUE_AT,
     ];
 
     public const DEFAULT_TRACKING_DOMAIN = 'stat.axitrace.com';

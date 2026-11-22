@@ -32,6 +32,17 @@ class AxitraceStatusModuleFrontController extends ModuleFrontController
         // No template: display() writes the JSON answer.
     }
 
+    /**
+     * PrestaShop answers a request that accepts application/json in ajax mode (Controller::isAjax()
+     * overrides $ajax in the constructor) and then calls displayAjax(), never display(): without this
+     * such a request got an empty text/html 200. axitrace-storefront.js sends that header, so the customer group
+     * exclusion never took effect in the browser (the script fails open).
+     */
+    public function displayAjax(): void
+    {
+        $this->display();
+    }
+
     public function display(): bool
     {
         foreach (StatusResponder::HEADERS as $name => $value) {

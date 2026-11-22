@@ -25,12 +25,19 @@ class AxitraceCronModuleFrontController extends ModuleFrontController
     /** @var Axitrace */
     public $module;
 
-    /** @var bool */
-    public $ajax = true;
-
     public function initContent(): void
     {
         // No template: display() writes the plain-text answer.
+    }
+
+    /**
+     * PrestaShop answers a request that accepts application/json in ajax mode (Controller::isAjax()
+     * overrides $ajax in the constructor) and then calls displayAjax(), never display(): without this
+     * such a request got an empty text/html 200 (some cron services send that header).
+     */
+    public function displayAjax(): void
+    {
+        $this->display();
     }
 
     public function display(): bool
@@ -45,6 +52,10 @@ class AxitraceCronModuleFrontController extends ModuleFrontController
             $token = Tools::getValue('token');
             $authorized = $expected !== '' && is_string($token) && hash_equals($expected, $token);
             $answer = $services->cronResponder()->respond($authorized);
+            if ($authorized) {
+                // The daily store domain claim, when due, runs at the end of this request.
+                $services->storeDomainClaimTrigger()->maybeSchedule(false);
+            }
         } catch (\Throwable $e) {
             PrestaShopLogger::addLog(sprintf('AxiTrace: cron controller failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, false);
             $answer = ['status' => 500, 'body' => "error\n"];

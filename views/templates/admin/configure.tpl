@@ -1,5 +1,5 @@
 {**
- * AxiTrace configuration page: error banners, connection health and the optional cron URL.
+ * AxiTrace configuration page: error banners, connection health, store domain status and the optional cron URL.
  *
  * @license https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
  *}
@@ -26,6 +26,25 @@
       <span class="help-block">{l s='Clears the failures listed above once you have fixed their cause. A failure that happens again is shown again.' d='Modules.Axitrace.Admin'}</span>
     </form>
   {/if}
+</div>
+<div class="panel" id="axitrace-store-domain">
+  <div class="panel-heading">{l s='Store domain' d='Modules.Axitrace.Admin'}</div>
+  <p>{l s='AxiTrace accepts the browser events of your store (page views, add to cart, checkout) only from a verified store domain. The module verifies it automatically when you save the settings and once a day.' d='Modules.Axitrace.Admin'}</p>
+  <table class="table">
+    <tbody>
+    {foreach from=$axitrace_domain item=axitrace_row}
+      <tr data-axitrace-domain="{$axitrace_row.state|escape:'html':'UTF-8'}">
+        <th scope="row" style="width: 30%;">{$axitrace_row.host|escape:'html':'UTF-8'}</th>
+        <td class="{if $axitrace_row.state == 'error'}text-danger{elseif $axitrace_row.state == 'warning'}text-warning{else}text-success{/if}">{$axitrace_row.message|escape:'html':'UTF-8'}</td>
+      </tr>
+    {/foreach}
+    </tbody>
+  </table>
+  <form method="post" action="{$axitrace_retry_url|escape:'html':'UTF-8'}">
+    <input type="hidden" name="axitrace_verify_domain_token" value="{$axitrace_verify_domain_token|escape:'html':'UTF-8'}">
+    <button type="submit" name="submitAxitraceVerifyDomain" value="1" class="btn btn-default">{l s='Verify store domain' d='Modules.Axitrace.Admin'}</button>
+    <span class="help-block">{l s='Asks AxiTrace to check the domains of all your shops again now.' d='Modules.Axitrace.Admin'}</span>
+  </form>
 </div>
 {if $axitrace_cron_url}
   <div class="panel" id="axitrace-cron">

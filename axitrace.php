@@ -18,6 +18,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 use Axitrace\PrestaShop\Admin\ActionToken;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Admin\DeliveryLog;
+use Axitrace\PrestaShop\Admin\DomainStatusPanel;
 use Axitrace\PrestaShop\Admin\HealthPanel;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\ShopScope;
@@ -35,13 +36,16 @@ class Axitrace extends Module
     /** Hidden field of the "Dismiss failures" form carrying {@see ActionToken}. */
     private const DISMISS_TOKEN_FIELD = 'axitrace_dismiss_token';
 
+    /** Hidden field of the "Verify store domain" form carrying {@see ActionToken}. */
+    private const VERIFY_DOMAIN_TOKEN_FIELD = 'axitrace_verify_domain_token';
+
     private ?ModuleServices $services = null;
 
     public function __construct()
     {
         $this->name = 'axitrace';
         $this->tab = 'analytics_stats';
-        $this->version = '1.0.0';
+        $this->version = '1.1.0';
         $this->author = 'AxiTrace';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -81,6 +85,10 @@ class Axitrace extends Module
         } catch (\Throwable $e) {
             return $this->failInstallStep('install', $e);
         }
+
+        // Claims the store domains of the shops that already have a public key (none on a first
+        // install: no HTTP request is made then). Never throws; the outcome is shown in the settings.
+        $this->services()->storeDomainClaimer()->claimAll();
 
         $failed = $this->services()->hookRegistrar()->register(fn (string $hook): bool => (bool) $this->registerHook($hook));
         if ($failed !== []) {
@@ -147,6 +155,10 @@ class Axitrace extends Module
             $output .= $this->dismissFailures($services, $scope);
         }
 
+        if (Tools::isSubmit(DomainStatusPanel::SUBMIT_VERIFY)) {
+            $output .= $this->verifyStoreDomain($services);
+        }
+
         $secretKey = $services->secretKeyVault()->read($scope);
         $endpoints = $services->endpointResolver()->resolve($services->config()->trackingDomain($scope));
 
@@ -159,6 +171,8 @@ class Axitrace extends Module
             'axitrace_log' => $services->deliveryLog()->entries(),
             'axitrace_retry_url' => $this->configureUrl(),
             'axitrace_retry_token' => $this->actionToken()->forEmployee(DeliveryLog::SUBMIT_RETRY, $this->employeeId()),
+            'axitrace_domain' => $this->storeDomainRows($services),
+            'axitrace_verify_domain_token' => $this->actionToken()->forEmployee(DomainStatusPanel::SUBMIT_VERIFY, $this->employeeId()),
         ]);
 
         $values = $handler->currentValues($scope);
@@ -196,6 +210,38 @@ class Axitrace extends Module
             PrestaShopLogger::addLog(sprintf('AxiTrace: dismissing the failures failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, true);
 
             return $this->displayError($this->trans('Dismissing the failures failed: %error%', ['%error%' => htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')], 'Modules.Axitrace.Admin'));
+        }
+    }
+
+    /** "Verify store domain": claims the store domains of every shop again, right away. */
+    private function verifyStoreDomain(ModuleServices $services): string
+    {
+        if (!$this->actionTokenValid(DomainStatusPanel::SUBMIT_VERIFY, self::VERIFY_DOMAIN_TOKEN_FIELD)) {
+            return $this->displayError($this->trans('The page has expired. Reload it and click Verify store domain again.', [], 'Modules.Axitrace.Admin'));
+        }
+
+        $services->storeDomainClaimer()->claimAll();
+
+        return $this->displayConfirmation($this->trans('AxiTrace was asked to verify your store domain. The result is shown under Store domain.', [], 'Modules.Axitrace.Admin'));
+    }
+
+    /**
+     * The "Store domain" rows; a failure to read them is shown in their place.
+     *
+     * @return list<array{host: string, state: string, message: string}>
+     */
+    private function storeDomainRows(ModuleServices $services): array
+    {
+        try {
+            return $services->domainStatusPanel()->rows($services->storeDomainClaimer()->lastStatuses());
+        } catch (\Throwable $e) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: the store domain status could not be read (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, true);
+
+            return [[
+                'host' => '',
+                'state' => HealthPanel::ERROR,
+                'message' => $this->trans('The store domain status could not be read: %error%', ['%error%' => $e::class . ': ' . $e->getMessage()], 'Modules.Axitrace.Admin'),
+            ]];
         }
     }
 
@@ -247,6 +293,7 @@ class Axitrace extends Module
     public function hookDisplayHeader(array $params): string
     {
         $this->scheduleRetries(true);
+        $this->scheduleDomainClaim(true);
 
         try {
             $phpSelf = $this->phpSelf();
@@ -375,6 +422,7 @@ class Axitrace extends Module
     public function hookActionAdminControllerSetMedia(array $params): void
     {
         $this->scheduleRetries(false);
+        $this->scheduleDomainClaim(false);
     }
 
     /**
@@ -524,6 +572,19 @@ class Axitrace extends Module
             $this->services()->lazyTrigger()->maybeSchedule($storefront);
         } catch (\Throwable $e) {
             PrestaShopLogger::addLog(sprintf('AxiTrace: scheduling the retry run failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, false);
+        }
+    }
+
+    /**
+     * Daily store domain claim (StoreDomainClaimTrigger): at the end of this request once it is due.
+     * A failure here never touches the page.
+     */
+    private function scheduleDomainClaim(bool $storefront): void
+    {
+        try {
+            $this->services()->storeDomainClaimTrigger()->maybeSchedule($storefront);
+        } catch (\Throwable $e) {
+            PrestaShopLogger::addLog(sprintf('AxiTrace: scheduling the store domain claim failed (%s: %s)', $e::class, $e->getMessage()), 3, null, 'Axitrace', null, false);
         }
     }
 

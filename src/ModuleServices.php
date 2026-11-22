@@ -21,6 +21,7 @@ use Axitrace\PrestaShop\Adapter\PrestaShopOrderReader;
 use Axitrace\PrestaShop\Adapter\PrestaShopRefundReader;
 use Axitrace\PrestaShop\Adapter\PrestaShopRequestContext;
 use Axitrace\PrestaShop\Adapter\PrestaShopShopGroupResolver;
+use Axitrace\PrestaShop\Adapter\PrestaShopStoreHostsReader;
 use Axitrace\PrestaShop\Adapter\PrestaShopStorefrontReader;
 use Axitrace\PrestaShop\Adapter\ProcessEnvironment;
 use Axitrace\PrestaShop\Adapter\ShutdownScheduler;
@@ -28,6 +29,7 @@ use Axitrace\PrestaShop\Adapter\SystemClock;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Admin\ConfigPageNotices;
 use Axitrace\PrestaShop\Admin\DeliveryLog;
+use Axitrace\PrestaShop\Admin\DomainStatusPanel;
 use Axitrace\PrestaShop\Admin\HealthPanel;
 use Axitrace\PrestaShop\Config\DeliveryHealth;
 use Axitrace\PrestaShop\Config\EndpointResolver;
@@ -35,6 +37,10 @@ use Axitrace\PrestaShop\Config\FailureRecorder;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\SecretKeyVault;
 use Axitrace\PrestaShop\Consent\ConsentGate;
+use Axitrace\PrestaShop\Domain\DomainProofResponder;
+use Axitrace\PrestaShop\Domain\ShopHosts;
+use Axitrace\PrestaShop\Domain\StoreDomainClaimer;
+use Axitrace\PrestaShop\Domain\StoreDomainClaimTrigger;
 use Axitrace\PrestaShop\Exclusion\CustomerGroupExclusion;
 use Axitrace\PrestaShop\Gdpr\PsGdprHooks;
 use Axitrace\PrestaShop\Hook\Front\CartSnapshotWriter;
@@ -107,7 +113,49 @@ final class ModuleServices
 
     public function configFormHandler(): ConfigFormHandler
     {
-        return new ConfigFormHandler($this->store(), $this->config(), $this->secretKeyVault(), $this->translator(), $this->failedEventQueue(), new SystemClock());
+        return new ConfigFormHandler($this->store(), $this->config(), $this->secretKeyVault(), $this->translator(), $this->failedEventQueue(), new SystemClock(), $this->storeDomainClaimer());
+    }
+
+    public function storeDomainClaimer(): StoreDomainClaimer
+    {
+        return new StoreDomainClaimer(
+            new PrestaShopStoreHostsReader($this->db()),
+            $this->config(),
+            $this->secretKeyVault(),
+            $this->store(),
+            new HttpTransport(),
+            new ProcessEnvironment(),
+            $this->failureRecorder(),
+            new SystemClock(),
+            (string) $this->module->version,
+        );
+    }
+
+    public function storeDomainClaimTrigger(): StoreDomainClaimTrigger
+    {
+        return new StoreDomainClaimTrigger($this->store(), $this->storeDomainClaimer(), self::$scheduler ??= new ShutdownScheduler(), new SystemClock());
+    }
+
+    public function domainProofResponder(): DomainProofResponder
+    {
+        return new DomainProofResponder($this->config(), $this->secretKeyVault());
+    }
+
+    /** The shop a storefront request was routed to, with its claimed hosts. */
+    public function shopHosts(int $idShopGroup, int $idShop): ShopHosts
+    {
+        foreach ((new PrestaShopStoreHostsReader($this->db()))->shops() as $shop) {
+            if ($shop->idShop === $idShop) {
+                return $shop;
+            }
+        }
+
+        return new ShopHosts($idShopGroup, $idShop, []);
+    }
+
+    public function domainStatusPanel(): DomainStatusPanel
+    {
+        return new DomainStatusPanel($this->translator());
     }
 
     public function healthPanel(): HealthPanel

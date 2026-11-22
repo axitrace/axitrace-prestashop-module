@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Axitrace\PrestaShop\Tests\Unit\Admin;
 
+use Axitrace\PrestaShop\Adapter\HttpResponse;
 use Axitrace\PrestaShop\Admin\ConfigFormHandler;
 use Axitrace\PrestaShop\Config\FailureRecorder;
 use Axitrace\PrestaShop\Config\ModuleConfig;
 use Axitrace\PrestaShop\Config\SecretKeyState;
 use Axitrace\PrestaShop\Config\SecretKeyVault;
 use Axitrace\PrestaShop\Config\ShopScope;
+use Axitrace\PrestaShop\Domain\ShopHosts;
+use Axitrace\PrestaShop\Domain\StoreDomainClaimer;
+use Axitrace\PrestaShop\Domain\StoreDomainStatus;
+use Axitrace\PrestaShop\Tests\Unit\Support\FakeEnvironment;
+use Axitrace\PrestaShop\Tests\Unit\Support\FakeHttpTransport;
+use Axitrace\PrestaShop\Tests\Unit\Support\FakeStoreHostsReader;
 use Axitrace\PrestaShop\Tests\Unit\Support\EchoTranslator;
 use Axitrace\PrestaShop\Tests\Unit\Support\FakeCipher;
 use Axitrace\PrestaShop\Tests\Unit\Support\FixedClock;
@@ -33,6 +40,8 @@ final class ConfigFormHandlerTest extends TestCase
 
     private InMemoryModuleDb $db;
 
+    private FakeHttpTransport $transport;
+
     protected function setUp(): void
     {
         $this->store = new InMemoryConfigurationStore();
@@ -43,7 +52,31 @@ final class ConfigFormHandlerTest extends TestCase
             new FailureRecorder($this->store, new SpyLogger(), new FixedClock()),
         );
         $this->db = new InMemoryModuleDb();
-        $this->handler = new ConfigFormHandler($this->store, new ModuleConfig($this->store), $this->vault, $this->translator, new FailedEventQueue($this->db, $this->store), new FixedClock());
+        $this->transport = new FakeHttpTransport();
+        $claimer = new StoreDomainClaimer(
+            new FakeStoreHostsReader(new ShopHosts(0, 0, ['shop.example'])),
+            new ModuleConfig($this->store),
+            $this->vault,
+            $this->store,
+            $this->transport,
+            new FakeEnvironment(),
+            new FailureRecorder($this->store, new SpyLogger(), new FixedClock()),
+            new FixedClock(),
+            '1.1.0',
+        );
+        $this->handler = new ConfigFormHandler($this->store, new ModuleConfig($this->store), $this->vault, $this->translator, new FailedEventQueue($this->db, $this->store), new FixedClock(), $claimer);
+    }
+
+    public function testSavingClaimsTheStoreDomainWithTheSavedKeys(): void
+    {
+        $this->transport->willAnswer(new HttpResponse(200, [], '{"success":true,"hosts":[{"host":"shop.example","status":"verified","reason":null,"browser_events_rejected":false}]}'));
+
+        $this->handler->save(self::input(), ShopScope::context());
+
+        self::assertCount(1, $this->transport->requests);
+        self::assertSame(['public_key' => self::PK, 'platform' => 'prestashop', 'hosts' => ['shop.example']], $this->transport->requests[0]['payload']);
+        self::assertSame('Basic ' . base64_encode(self::SK . ':'), $this->transport->requests[0]['headers']['Authorization'], 'the secret key saved in the same submit');
+        self::assertSame('verified', StoreDomainStatus::fromJson($this->store->get(ModuleConfig::DOMAIN_STATUS, 0, 0))?->hosts[0]['status']);
     }
 
     public function testSavingASecretKeyRequeuesTheParkedRefunds(): void

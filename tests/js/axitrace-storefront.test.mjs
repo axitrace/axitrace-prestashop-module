@@ -341,7 +341,8 @@ test('checkout: begin_checkout once, add_payment_info once on the first payment 
     assert.deepEqual(names, ['begin_checkout', 'add_payment_info']);
     assert.equal(page.events[0][1].value, 57.14);
     assert.equal(page.events[0][1].products[0].quantity, 2);
-    assert.equal(page.events[1][1].paymentType, 'ps_wirepayment');
+    assert.equal(page.events[1][1].payment_type, 'ps_wirepayment');
+    assert.equal('paymentType' in page.events[1][1], false);
 });
 
 test('checkout step reloads: begin_checkout and add_payment_info once per cart, again for a changed cart', () => {

@@ -611,8 +611,9 @@
                 debug('add_payment_info already sent for this cart');
                 return;
             }
+            // snake_case: ingestion (handleTrackAddPaymentInfo) reads params.payment_type only.
             send('add_payment_info', cartEventData(context, {
-                paymentType: target.getAttribute('data-module-name') || ''
+                payment_type: target.getAttribute('data-module-name') || ''
             }), function () {
                 return onceForTab(win, paymentGuard);
             });

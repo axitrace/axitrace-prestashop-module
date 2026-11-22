@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-22
+
 ### Fixed
 - The payment method of the add payment info event (the module name of the selected payment option)
   was sent under the key `paymentType`, which AxiTrace does not read, so it was always empty in the

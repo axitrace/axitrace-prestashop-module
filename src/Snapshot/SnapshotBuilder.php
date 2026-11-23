@@ -24,8 +24,14 @@ use Axitrace\PrestaShop\Normalizer\ClickIdReader;
  */
 final class SnapshotBuilder
 {
-    private const FBP_PATTERN = '/^fb\.\d+\.\d+\.\d+$/';
-    private const FBC_PATTERN = '/^fb\.\d+\.\d+\.[A-Za-z0-9_-]+$/';
+    /**
+     * Optional 5th part of _fbp/_fbc written by Meta's Conversions API Parameter Builder:
+     * 8 base64url characters starting with "AQ", or a legacy 2-character language token.
+     * The cookie is forwarded with it, unchanged.
+     */
+    private const META_APPENDIX = '(?:\.(?:AQ[A-Za-z0-9_-]{6}|AQ|Ag|Aw|BA|BQ|Bg))?';
+    private const FBP_PATTERN = '/^fb\.\d+\.\d+\.\d+' . self::META_APPENDIX . '$/';
+    private const FBC_PATTERN = '/^fb\.\d+\.\d+\.[A-Za-z0-9_-]+' . self::META_APPENDIX . '$/';
     private const GA_PATTERN = '/^GA\d+\.\d+\.\d+\.\d+$/';
     private const GA_SESSION_PATTERN = '/^GS\d+\./';
     private const TTP_PATTERN = '/^[A-Za-z0-9_.-]{8,128}$/';

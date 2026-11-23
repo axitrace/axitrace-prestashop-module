@@ -45,7 +45,7 @@ class Axitrace extends Module
     {
         $this->name = 'axitrace';
         $this->tab = 'analytics_stats';
-        $this->version = '1.1.1';
+        $this->version = '1.1.2';
         $this->author = 'AxiTrace';
         $this->need_instance = 0;
         $this->bootstrap = true;

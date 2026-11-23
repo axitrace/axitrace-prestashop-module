@@ -2,7 +2,7 @@
 <module>
     <name>axitrace</name>
     <displayName><![CDATA[AxiTrace]]></displayName>
-    <version><![CDATA[1.1.1]]></version>
+    <version><![CDATA[1.1.2]]></version>
     <description><![CDATA[Server-side conversion tracking for Meta, Google Ads, GA4, TikTok and more, with profit tracking.]]></description>
     <author><![CDATA[AxiTrace]]></author>
     <tab><![CDATA[analytics_stats]]></tab>

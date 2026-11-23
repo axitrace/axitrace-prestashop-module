@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-23
+
 ### Fixed
 - **Orders lost the Meta browser id (`_fbp`/`_fbc`) when the shop runs Meta's Conversions API Parameter Builder** (for example through a Meta module that uses it). The library appends a 5th part to both cookies (`fb.1.<ts>.<id>.AQEAAQMC`); `SnapshotBuilder` accepted only 4 parts and left fbp/fbc out of the attribution snapshot. Both cookies are now accepted with Meta's appendix (8 base64url characters starting with `AQ`, or a legacy 2-character token) and forwarded unchanged.
 
